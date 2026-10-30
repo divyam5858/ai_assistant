@@ -53,6 +53,10 @@
       "destination": "/public/sdk/:file*"
     },
     {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
       "source": "/",
       "destination": "/demo/index.html"
     }

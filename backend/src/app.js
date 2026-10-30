@@ -31,6 +31,15 @@ export function createApp() {
   // Rate limiting on API routes
   app.use('/api', configureRateLimiter());
 
+  // Path normalizer for serverless environments (e.g. Vercel rewrites)
+  app.use((req, res, next) => {
+    const matched = req.headers['x-matched-path'] || req.headers['x-vercel-matched-path'];
+    if (matched && matched.startsWith('/api') && req.url !== matched) {
+      req.url = matched;
+    }
+    next();
+  });
+
   // Mount API endpoints
   app.use('/api/health', healthRouter);
   app.use('/api/config', configRouter);
