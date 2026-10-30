@@ -1,0 +1,28 @@
+# Environment variables
+.env
+*.env
+backend/.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+package-lock.json.bak
+
+# Build artifacts
+dist/
+widget/dist/
+backend/public/sdk/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.vercel/
+

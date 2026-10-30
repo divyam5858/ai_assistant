@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Assistant Plugin & SDK - Standalone Demo</title>
+  <link rel="stylesheet" href="/demo/demo.css">
+  <!-- Embed Standalone AI Assistant Widget via Script Tag -->
+  <script src="/sdk/assistant.js" data-assistant-id="default" data-theme="auto" defer></script>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <header class="navbar">
+    <div class="container">
+      <a href="/demo" class="nav-brand">
+        <span class="nav-brand-badge">SDK v1.0</span>
+        AI Assistant Plugin
+      </a>
+      <div class="nav-status">
+        <span id="statusDot" class="status-dot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="container">
+      <h1>Production AI Assistant Plugin</h1>
+      <p>
+        An independent conversational AI assistant embedded into any web application
+        with a single JavaScript <code>&lt;script&gt;</code> tag. Isolated with Shadow DOM,
+        powered by Google Gemini with Server-Sent Events (SSE) streaming.
+      </p>
+      <div class="hero-actions">
+        <button id="btnOpen" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+          Open Assistant Chat
+        </button>
+        <button id="btnToggle" class="btn">Toggle Chat Panel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Content Grid -->
+  <main class="container">
+    <div class="grid-2">
+
+      <!-- Card 1: Programmatic SDK Controls -->
+      <section class="card">
+        <h2 class="card-title">Programmatic SDK Controls</h2>
+        <p class="card-desc">Control the assistant widget from host application JavaScript.</p>
+
+        <!-- Persona Switcher -->
+        <div class="form-group">
+          <label class="form-label" for="personaSelect">Switch Assistant Persona:</label>
+          <select id="personaSelect" class="form-control">
+            <option value="default">Default AI Assistant (General purpose)</option>
+            <option value="researcher">Researcher & Content Synthesizer</option>
+            <option value="support">Customer Support Guide</option>
+            <option value="coder">Code & Dev Companion</option>
+          </select>
+        </div>
+
+        <!-- Theme Controls -->
+        <div class="form-group">
+          <label class="form-label">Theme Mode:</label>
+          <div class="btn-group">
+            <button id="btnThemeLight" class="btn">Light</button>
+            <button id="btnThemeDark" class="btn">Dark</button>
+            <button id="btnThemeAuto" class="btn">Auto (System)</button>
+          </div>
+        </div>
+
+        <!-- Position Controls -->
+        <div class="form-group">
+          <label class="form-label">Launcher Position:</label>
+          <div class="btn-group">
+            <button id="btnPosBR" class="btn">Bottom Right</button>
+            <button id="btnPosBL" class="btn">Bottom Left</button>
+            <button id="btnPosTR" class="btn">Top Right</button>
+            <button id="btnPosTL" class="btn">Top Left</button>
+          </div>
+        </div>
+
+        <!-- Pre-fill & Send Prompts -->
+        <div class="form-group">
+          <label class="form-label">Send Pre-filled Prompt into Chat:</label>
+          <div class="btn-group">
+            <button class="btn btn-prompt" data-prompt="Explain how Server-Sent Events (SSE) work in Node.js">Explain SSE</button>
+            <button class="btn btn-prompt" data-prompt="What are the best practices for Shadow DOM CSS isolation?">Shadow DOM CSS</button>
+            <button class="btn btn-prompt" data-prompt="Provide a simple REST API error response schema in JSON">JSON Schema</button>
+          </div>
+        </div>
+
+        <!-- Session Controls -->
+        <div class="form-group">
+          <label class="form-label">Conversation Session:</label>
+          <div class="btn-group">
+            <button id="btnClearConvo" class="btn btn-danger">Clear Active Conversation</button>
+            <button id="btnClose" class="btn">Close Panel</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 2: Live AI Text Summarization Studio -->
+      <section class="card">
+        <h2 class="card-title">Live Text Summarization Studio</h2>
+        <p class="card-desc">Extract key insights, action items, or structured JSON using the standalone API.</p>
+
+        <div class="form-group">
+          <label class="form-label" for="sampleSelect">Select Sample Text:</label>
+          <select id="sampleSelect" class="form-control">
+            <option value="business">Q3 Business Performance Review</option>
+            <option value="tech">Architecture Decision Record (ADR 024)</option>
+            <option value="incident">Incident Post-Mortem (SSE Buffering)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="summaryInput">Text to Summarize:</label>
+          <textarea id="summaryInput" class="form-control" placeholder="Paste or type text..."></textarea>
+        </div>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <div style="flex: 1;">
+            <label class="form-label" for="summaryStyle">Summary Style:</label>
+            <select id="summaryStyle" class="form-control">
+              <option value="concise">Concise (Single paragraph)</option>
+              <option value="bullet_points">Bullet Points (Core facts)</option>
+              <option value="key_takeaways">Key Takeaways (Top 3-5)</option>
+              <option value="action_items">Action Items & Next Steps</option>
+              <option value="detailed">Detailed Analysis</option>
+              <option value="structured_json">Structured JSON</option>
+            </select>
+          </div>
+          <div style="flex: 1;">
+            <label class="form-label" for="summaryFocus">Optional Focus Area:</label>
+            <input type="text" id="summaryFocus" class="form-control" placeholder="e.g. revenue, security">
+          </div>
+        </div>
+
+        <div class="btn-group">
+          <button id="btnSummarize" class="btn btn-accent">Summarize (Live Stream)</button>
+          <button id="btnSendToChat" class="btn">Ask Follow-up in Chat</button>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Summary Output:</label>
+          <div id="summaryOutput" class="summary-result-box empty">Select a sample or paste text above, then click 'Summarize'.</div>
+        </div>
+      </section>
+
+      <!-- Card 3: Real-Time SDK Event Stream Log -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <div>
+            <h2 class="card-title" style="margin-bottom: 4px;">Real-Time SDK Event Stream</h2>
+            <p class="card-desc" style="margin-bottom: 0;">Observes runtime events emitted by <code>AssistantSDK.on(event, handler)</code></p>
+          </div>
+          <button id="clearLogBtn" class="btn" style="padding: 4px 10px; font-size: 0.75rem;">Clear Log</button>
+        </div>
+        <div id="eventLog" class="event-log-container"></div>
+      </section>
+
+      <!-- Card 4: Integration Snippets -->
+      <section class="card" style="grid-column: 1 / -1;">
+        <h2 class="card-title">Integration Guide</h2>
+        <p class="card-desc">Add the assistant to your website or application in seconds.</p>
+
+        <h3 style="font-size: 1rem; color: #fff; margin-top: 12px;">Option 1: Script Tag (HTML / CMS / WordPress / Webflow)</h3>
+        <div class="code-box">
+          <button class="code-copy-btn">Copy</button>
+          <pre>&lt;!-- Add to &lt;head&gt; or before &lt;/body&gt; --&gt;
+&lt;script
+  src="https://your-assistant-domain.com/sdk/assistant.js"
+  data-assistant-id="default"
+  data-theme="auto"
+  data-position="bottom-right"
+  defer
+&gt;&lt;/script&gt;</pre>
+        </div>
+
+        <h3 style="font-size: 1rem; color: #fff; margin-top: 20px;">Option 2: Programmatic JavaScript API</h3>
+        <div class="code-box">
+          <button class="code-copy-btn">Copy</button>
+          <pre>// Initialize programmatically
+await AssistantSDK.init({
+  assistantId: 'researcher',
+  theme: 'dark',
+  position: 'bottom-right',
+  primaryColor: '#0284c7'
+});
+
+// Listen to conversation events
+AssistantSDK.on('message:received', (msg) => {
+  console.log('Assistant replied:', msg.content);
+});
+
+// Control widget
+AssistantSDK.open();
+AssistantSDK.sendMessage('Please summarize this document.');</pre>
+        </div>
+
+        <h3 style="font-size: 1rem; color: #fff; margin-top: 20px;">Option 3: React / Next.js Component</h3>
+        <div class="code-box">
+          <button class="code-copy-btn">Copy</button>
+          <pre>import { useEffect } from 'react';
+
+export function AIAssistantWidget() {
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = 'https://your-assistant-domain.com/sdk/assistant.js';
+    script.setAttribute('data-assistant-id', 'default');
+    script.async = true;
+    document.body.appendChild(script);
+
+    return () => {
+      if (window.AssistantSDK) {
+        window.AssistantSDK.destroy();
+      }
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  return null;
+}</pre>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script src="/demo/demo.js"></script>
+</body>
+</html>
+

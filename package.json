@@ -1,0 +1,39 @@
+{
+  "name": "ai-assistant-plugin",
+  "version": "1.0.0",
+  "description": "Production-oriented, reusable, conversational AI assistant plugin and embeddable SDK",
+  "type": "module",
+  "main": "backend/src/server.js",
+  "scripts": {
+    "build:widget": "node widget/build.js",
+    "build": "node widget/build.js",
+    "start": "node --env-file=backend/.env backend/src/server.js",
+    "start:fallback": "node backend/src/server.js",
+    "dev": "node widget/build.js && node --env-file=backend/.env backend/src/server.js",
+    "test": "node --env-file=backend/.env --test tests/config.test.js tests/session-manager.test.js tests/markdown.test.js tests/connectors.test.js tests/security.test.js tests/api-integration.test.js tests/context.test.js tests/action-protocol.test.js tests/gemini-live.test.js tests/vercel-entry.test.js",
+    "test:mock": "node --test tests/config.test.js tests/session-manager.test.js tests/markdown.test.js tests/connectors.test.js tests/security.test.js tests/api-integration.test.js tests/context.test.js tests/action-protocol.test.js tests/vercel-entry.test.js"
+  },
+  "keywords": [
+    "ai",
+    "assistant",
+    "widget",
+    "sdk",
+    "gemini",
+    "chatbot",
+    "embeddable"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "esbuild": "^0.25.0",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.0.0",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}

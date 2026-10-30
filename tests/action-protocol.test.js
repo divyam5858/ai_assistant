@@ -1,0 +1,192 @@
+import { test, describe, before } from 'node:test';
+import assert from 'node:assert/strict';
+import request from 'supertest';
+import { createApp } from '../backend/src/app.js';
+import { setAIProvider } from '../backend/src/providers/factory.js';
+import { MockAIProvider } from '../backend/src/providers/mock.js';
+import { ActionProposalSchema, ALLOWED_ACTIONS } from '../config/schemas.js';
+import { extractActionProposal } from '../backend/src/routes/chat.js';
+import { GroqProvider } from '../backend/src/providers/groq.js';
+import { ResilientFallbackProvider } from '../backend/src/providers/factory.js';
+import { BaseAIProvider } from '../backend/src/providers/base.js';
+
+describe('Structured Action Protocol & Groq Provider', () => {
+  let app;
+
+  before(() => {
+    setAIProvider(new MockAIProvider());
+    app = createApp();
+  });
+  test('ActionProposalSchema validates candidate:apply_job proposal', () => {
+    const valid = {
+      id: 'act_101',
+      action: 'candidate:apply_job',
+      title: 'Apply for Senior Architect',
+      explanation: 'Submitting application using candidate profile',
+      parameters: {
+        job_id: '9a7b3c21-1234-4567-89ab-cdef01234567',
+        job_title: 'Senior Architect',
+        company_name: 'TechCorp'
+      }
+    };
+    const parsed = ActionProposalSchema.parse(valid);
+    assert.equal(parsed.action, 'candidate:apply_job');
+    assert.equal(parsed.parameters.job_id, '9a7b3c21-1234-4567-89ab-cdef01234567');
+  });
+
+  test('ActionProposalSchema validates consultancy:create_candidates_batch proposal', () => {
+    const valid = {
+      id: 'act_102',
+      action: 'consultancy:create_candidates_batch',
+      title: 'Batch Create Agency Candidates',
+      explanation: 'Creating 2 reviewed candidates from uploaded document',
+      parameters: {
+        candidates: [
+          { first_name: 'John', last_name: 'Doe', email: 'john@example.com' },
+          { first_name: 'Jane', last_name: 'Smith', email: 'jane@example.com' }
+        ]
+      }
+    };
+    const parsed = ActionProposalSchema.parse(valid);
+    assert.equal(parsed.action, 'consultancy:create_candidates_batch');
+    assert.equal(parsed.parameters.candidates.length, 2);
+  });
+
+  test('ActionProposalSchema rejects unauthorized or arbitrary action names', () => {
+    const invalid = {
+      id: 'act_bad',
+      action: 'admin:delete_database',
+      title: 'Dangerous Action',
+      parameters: {}
+    };
+    assert.throws(() => ActionProposalSchema.parse(invalid));
+  });
+
+  test('extractActionProposal parses action:hirepool fenced block', () => {
+    const text = `I found a great role for you!
+\`\`\`action:hirepool
+{
+  "id": "act_test_1",
+  "action": "candidate:apply_job",
+  "title": "Apply for Frontend Lead",
+  "explanation": "Applying to Frontend Lead at TechCorp",
+  "parameters": {
+    "job_id": "00000000-0000-0000-0000-000000000001"
+  }
+}
+\`\`\`
+Please confirm above.`;
+
+    const res = extractActionProposal(text);
+    assert.ok(res.action);
+    assert.equal(res.action.action, 'candidate:apply_job');
+    assert.equal(res.action.parameters.job_id, '00000000-0000-0000-0000-000000000001');
+  });
+
+  test('extractActionProposal safely ignores invalid or malformed action JSON', () => {
+    const malformed = `Here is some text:
+\`\`\`action:hirepool
+{ bad_json: true,
+\`\`\`
+Ending.`;
+
+    const res = extractActionProposal(malformed);
+    assert.equal(res.action, null);
+    assert.equal(res.text, malformed);
+  });
+
+  test('GroqProvider handles configuration and error sanitization', () => {
+    const provider = new GroqProvider({
+      apiKey: 'gsk_supersecretkey12345',
+      model: 'llama-3.3-70b-versatile'
+    });
+    assert.equal(provider.name, 'groq');
+    assert.equal(provider.model, 'llama-3.3-70b-versatile');
+
+    const sanitized = provider._sanitizeError(new Error('Failed with gsk_supersecretkey12345 key'));
+    assert.ok(!sanitized.message.includes('gsk_supersecretkey12345'));
+    assert.ok(sanitized.message.includes('[REDACTED_KEY]'));
+  });
+
+  test('ResilientFallbackProvider seamlessly falls back when primary hits 429', async () => {
+    class FailingPrimary extends BaseAIProvider {
+      constructor() { super('failing'); }
+      async chat() {
+        const err = new Error('Rate limit exceeded (429)');
+        err.statusCode = 429;
+        throw err;
+      }
+    }
+
+    class WorkingFallback extends BaseAIProvider {
+      constructor() { super('fallback'); }
+      async chat() {
+        return { text: 'Hello from Groq Fallback!', model: 'groq-llama' };
+      }
+    }
+
+    const fallbackProvider = new ResilientFallbackProvider(new FailingPrimary(), new WorkingFallback());
+    const res = await fallbackProvider.chat({ messages: [{ role: 'user', content: 'Hi' }] });
+    assert.equal(res.text, 'Hello from Groq Fallback!');
+    assert.equal(res.model, 'groq-llama');
+  });
+
+  test('POST /api/chat includes action proposal when generated by assistant', async () => {
+    const actionPayload = `I can help you add this candidate to your pool.
+\`\`\`action:hirepool
+{
+  "id": "act_agency_1",
+  "action": "consultancy:add_candidate",
+  "title": "Add Candidate: Marcus Vance",
+  "explanation": "Add Marcus Vance (DevOps) to agency pool",
+  "parameters": {
+    "first_name": "Marcus",
+    "last_name": "Vance",
+    "email": "marcus.v@example.com",
+    "candidate_consent": true
+  }
+}
+\`\`\``;
+
+    const res = await request(app)
+      .post('/api/chat')
+      .send({
+        assistantId: 'default',
+        message: 'ECHO_RESPONSE:' + actionPayload
+      });
+
+    assert.equal(res.status, 200);
+    assert.ok(res.body.action);
+    assert.equal(res.body.action.action, 'consultancy:add_candidate');
+    assert.equal(res.body.action.parameters.first_name, 'Marcus');
+  });
+
+  test('POST /api/chat/stream streams action event when action is proposed', async () => {
+    const actionPayload = `\`\`\`action:hirepool
+{
+  "id": "act_client_1",
+  "action": "client:create_job",
+  "title": "Create Draft Job: React Lead",
+  "explanation": "Create draft job posting",
+  "parameters": {
+    "title": "React Lead",
+    "description": "Looking for React Lead with minimum 5 years of experience...",
+    "job_type": "full_time",
+    "status": "draft"
+  }
+}
+\`\`\``;
+
+    const res = await request(app)
+      .post('/api/chat/stream')
+      .send({
+        assistantId: 'default',
+        message: 'ECHO_RESPONSE:' + actionPayload
+      });
+
+    assert.equal(res.status, 200);
+    assert.ok(res.text.includes('"type":"action"'));
+    assert.ok(res.text.includes('"action":"client:create_job"'));
+    assert.ok(res.text.includes('"type":"done"'));
+  });
+});
