@@ -34,8 +34,11 @@ export function createApp() {
   // Path normalizer for serverless environments (e.g. Vercel rewrites)
   app.use((req, res, next) => {
     const matched = req.headers['x-matched-path'] || req.headers['x-vercel-matched-path'];
-    if (matched && matched.startsWith('/api') && req.url !== matched) {
+    if (matched && matched.startsWith('/api')) {
       req.url = matched;
+    } else if (req.query && req.query.path) {
+      const subpath = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
+      req.url = '/api/' + subpath;
     }
     next();
   });
