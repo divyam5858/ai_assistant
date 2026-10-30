@@ -46,11 +46,22 @@ async function build() {
     target: ['es2020']
   });
 
+  // Synchronize build output with public/sdk for Vercel CDN static serving
+  const publicSdkDir = path.resolve(rootDir, 'public/sdk');
+  if (!fs.existsSync(publicSdkDir)) {
+    fs.mkdirSync(publicSdkDir, { recursive: true });
+  }
+  fs.copyFileSync(path.resolve(distDir, 'assistant.js'), path.resolve(publicSdkDir, 'assistant.js'));
+  fs.copyFileSync(path.resolve(distDir, 'assistant.min.js'), path.resolve(publicSdkDir, 'assistant.min.js'));
+  if (fs.existsSync(path.resolve(distDir, 'assistant.js.map'))) {
+    fs.copyFileSync(path.resolve(distDir, 'assistant.js.map'), path.resolve(publicSdkDir, 'assistant.js.map'));
+  }
+
   const stats = fs.statSync(path.resolve(distDir, 'assistant.js'));
   const minStats = fs.statSync(path.resolve(distDir, 'assistant.min.js'));
 
-  console.log(`[Build] Bundle generated: widget/dist/assistant.js (${(stats.size / 1024).toFixed(1)} KB)`);
-  console.log(`[Build] Minified bundle: widget/dist/assistant.min.js (${(minStats.size / 1024).toFixed(1)} KB)`);
+  console.log(`[Build] Bundle generated: widget/dist/assistant.js & public/sdk/assistant.js (${(stats.size / 1024).toFixed(1)} KB)`);
+  console.log(`[Build] Minified bundle: widget/dist/assistant.min.js & public/sdk/assistant.min.js (${(minStats.size / 1024).toFixed(1)} KB)`);
   console.log('[Build] Build completed successfully.');
 }
 

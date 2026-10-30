@@ -55,6 +55,11 @@ export function createApp() {
   const demoPath = path.resolve(rootDir, 'demo');
   app.use('/demo', express.static(demoPath));
 
+  // Root API redirect to health
+  app.get('/api', (req, res) => {
+    res.redirect('/api/health');
+  });
+
   // Root redirect to demo
   app.get('/', (req, res) => {
     res.redirect('/demo');

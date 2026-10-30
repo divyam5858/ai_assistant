@@ -53,6 +53,14 @@ export function configureCors() {
         return callback(null, true);
       }
 
+      // Always permit portfolio domain and preview deployments
+      if (
+        origin === 'https://divyashree-mallarapu.netlify.app' ||
+        origin.endsWith('.netlify.app')
+      ) {
+        return callback(null, true);
+      }
+
       // Reject origins not included in the configuration
       const err = new Error(
         `CORS policy does not allow access from origin: ${origin}`

@@ -2,12 +2,22 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert';
 import request from 'supertest';
 import app from '../api/index.js';
+import catchAllApp from '../api/[...path].js';
 
-describe('Vercel Serverless Entry Point (api/index.js)', () => {
-  test('exports valid Express application instance', () => {
+describe('Vercel Serverless Entry Points (api/index.js & api/[...path].js)', () => {
+  test('exports valid Express application instance from index.js and [...path].js', () => {
     assert.ok(app, 'app must be defined');
     assert.strictEqual(typeof app, 'function', 'app must be a callable Express function');
     assert.ok(app.handle, 'app must have Express handle method');
+    assert.strictEqual(catchAllApp, app, '[...path].js must export the same Express application instance');
+  });
+
+  test('GET /api redirects to /api/health', async () => {
+    const res = await request(app)
+      .get('/api')
+      .expect(302);
+
+    assert.strictEqual(res.headers.location, '/api/health');
   });
 
   test('GET /api/health returns 200 and healthy status', async () => {
@@ -29,6 +39,15 @@ describe('Vercel Serverless Entry Point (api/index.js)', () => {
     assert.ok(res.body.assistant);
     assert.strictEqual(res.body.assistant.assistantId, 'default');
     assert.strictEqual(res.body.assistant.name, 'AI Assistant');
+  });
+
+  test('Permits cross-origin requests from Netlify portfolio origin', async () => {
+    const res = await request(app)
+      .get('/api/config/default')
+      .set('Origin', 'https://divyashree-mallarapu.netlify.app')
+      .expect(200);
+
+    assert.strictEqual(res.headers['access-control-allow-origin'], 'https://divyashree-mallarapu.netlify.app');
   });
 
   test('GET /sdk/assistant.js serves compiled SDK with cross-origin headers', async () => {

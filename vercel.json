@@ -1,9 +1,8 @@
-
 {
   "version": 2,
   "buildCommand": "npm run build",
   "functions": {
-    "api/index.js": {
+    "api/**/*.js": {
       "includeFiles": "widget/dist/**,demo/**,config/**",
       "maxDuration": 60
     }
@@ -17,16 +16,45 @@
           "value": "*"
         },
         {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "*"
+        },
+        {
           "key": "Cache-Control",
-          "value": "public, max-age=0, must-revalidate"
+          "value": "public, max-age=3600, s-maxage=86400"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "Content-Type, Authorization, X-Requested-With, X-Session-Id, X-Assistant-Id"
         }
       ]
     }
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.js"
+      "source": "/sdk/:file*",
+      "destination": "/public/sdk/:file*"
+    },
+    {
+      "source": "/",
+      "destination": "/demo/index.html"
     }
   ]
 }
