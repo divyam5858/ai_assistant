@@ -13,7 +13,7 @@ export function errorHandler(err, req, res, next) {
       error: {
         code: 'VALIDATION_ERROR',
         message: 'Invalid request parameters',
-        details: err.errors.map(e => ({
+        details: err.issues.map(e => ({
           field: e.path.join('.'),
           message: e.message
         }))
@@ -74,4 +74,3 @@ export function errorHandler(err, req, res, next) {
     }
   });
 }
-

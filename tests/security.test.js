@@ -2,6 +2,7 @@ import { test, describe, before } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
+import { z } from 'zod';
 import { readFileSync } from 'node:fs';
 import { createApp } from '../backend/src/app.js';
 import { configureCors, sanitizePrompt } from '../backend/src/middleware/security.js';
@@ -157,5 +158,21 @@ describe('Security & Privacy Controls', () => {
     assert.equal(res.body.error.code, 'INTERNAL_SERVER_ERROR');
     // Ensure stack trace property is not leaked
     assert.equal(res.body.error.stack, undefined);
+  });
+
+  test('Zod validation errors retain safe field details', async () => {
+    const validationApp = express();
+    validationApp.get('/invalid', (_req, _res, next) => {
+      next(z.object({ name: z.string() }).safeParse({ name: 42 }).error);
+    });
+    validationApp.use(errorHandler);
+
+    const res = await request(validationApp).get('/invalid').expect(400);
+
+    assert.equal(res.body.error.code, 'VALIDATION_ERROR');
+    assert.deepEqual(res.body.error.details, [{
+      field: 'name',
+      message: 'Invalid input: expected string, received number'
+    }]);
   });
 });

@@ -58,6 +58,8 @@ async function build() {
     fs.copyFileSync(path.resolve(distDir, 'assistant.js.map'), path.resolve(publicSdkDir, 'assistant.js.map'));
   }
 
+  fs.cpSync(path.resolve(rootDir, 'demo'), path.resolve(rootDir, 'public/demo'), { recursive: true });
+
   const stats = fs.statSync(path.resolve(distDir, 'assistant.js'));
   const minStats = fs.statSync(path.resolve(distDir, 'assistant.min.js'));
 
@@ -70,4 +72,3 @@ build().catch(err => {
   console.error('[Build] Build failed:', err);
   process.exit(1);
 });
-

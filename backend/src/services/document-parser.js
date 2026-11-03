@@ -2,12 +2,35 @@ import { createRequire } from 'module';
 import mammoth from 'mammoth';
 
 const require = createRequire(import.meta.url);
-// Ensure Vercel includes pdf-parse's optional native DOM shim in the function bundle.
-require('@napi-rs/canvas');
-const { PDFParse } = require('pdf-parse');
-const { getData: getPdfWorkerData } = require('pdf-parse/worker');
 
-PDFParse.setWorker(getPdfWorkerData());
+let pdfParsePromise;
+
+function getPDFParse() {
+  if (!pdfParsePromise) {
+    pdfParsePromise = (async () => {
+      // Load the PDF runtime only for PDF uploads so other API routes remain available if it is mispackaged.
+      require('@napi-rs/canvas');
+      const { PDFParse } = require('pdf-parse');
+      const { getData: getPdfWorkerData } = await import('pdf-parse/worker');
+      PDFParse.setWorker(getPdfWorkerData());
+      return PDFParse;
+    })().catch((error) => {
+      pdfParsePromise = null;
+      console.error('[Document Parser] PDF parser initialization failed:', error);
+      throw new DocumentProcessingError(
+        'PDF document processing is temporarily unavailable.',
+        503,
+        'PDF_PROCESSOR_UNAVAILABLE'
+      );
+    });
+  }
+
+  return pdfParsePromise;
+}
+
+function isMissingPdfWorkerError(error) {
+  return error?.code === 'ERR_MODULE_NOT_FOUND' && /pdf\.worker\.mjs/i.test(error.message || '');
+}
 
 export class DocumentProcessingError extends Error {
   constructor(message, statusCode = 400, code = 'DOCUMENT_PROCESSING_ERROR') {
@@ -131,6 +154,7 @@ export async function parseDocument(buffer, filename = 'document', mimetype = ''
 
   try {
     if (format === 'pdf') {
+      const PDFParse = await getPDFParse();
       const parser = new PDFParse({ data: buffer });
       try {
         const result = await parser.getText();
@@ -148,6 +172,14 @@ export async function parseDocument(buffer, filename = 'document', mimetype = ''
   } catch (err) {
     if (err instanceof DocumentProcessingError) {
       throw err;
+    }
+    if (format === 'pdf' && isMissingPdfWorkerError(err)) {
+      console.error('[Document Parser] PDF worker asset could not be resolved:', err);
+      throw new DocumentProcessingError(
+        'PDF document processing is temporarily unavailable.',
+        503,
+        'PDF_PROCESSOR_UNAVAILABLE'
+      );
     }
     throw new CorruptDocumentError(`Could not parse ${format.toUpperCase()} document "${filename}": ${err.message}`);
   }

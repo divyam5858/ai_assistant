@@ -8,7 +8,7 @@ export const ActionDefinitionSchema = z.object({
     .regex(/^[a-zA-Z0-9_:-]+$/, 'Action name must contain only alphanumeric characters, underscores, colons, or hyphens'),
   title: z.string().trim().min(1).max(120).optional(),
   description: z.string().trim().min(1, 'Action description is required').max(1000),
-  parameters: z.record(z.any()).optional().default({}),
+  parameters: z.record(z.string(), z.any()).optional().default({}),
   permissions: z.array(z.string().trim().min(1).max(100)).max(50).optional().default([]),
   risk: z.enum(['read', 'write', 'destructive']).optional().default('write'),
   parameterSchema: z.custom((val) => {
@@ -18,7 +18,7 @@ export const ActionDefinitionSchema = z.object({
   promptGuideline: z.string().max(2000).optional(),
   promptable: z.boolean().optional().default(true),
   requiresConfirmation: z.boolean().optional().default(true),
-  metadata: z.record(z.any()).optional().default({})
+  metadata: z.record(z.string(), z.any()).optional().default({})
 });
 
 /**
@@ -261,7 +261,7 @@ export function createActionProposalSchema(registry = actionRegistry) {
     ),
     title: z.string().min(1).max(120),
     explanation: z.string().max(1000).optional().default(''),
-    parameters: z.record(z.any()).default({})
+    parameters: z.record(z.string(), z.any()).default({})
   });
 }
 

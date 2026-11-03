@@ -10,7 +10,8 @@
     "start": "node --env-file=backend/.env backend/src/server.js",
     "start:fallback": "node backend/src/server.js",
     "dev": "node widget/build.js && node --env-file=backend/.env backend/src/server.js",
-    "test": "node --env-file=backend/.env --test tests/config.test.js tests/session-manager.test.js tests/markdown.test.js tests/connectors.test.js tests/security.test.js tests/api-integration.test.js tests/context.test.js tests/action-protocol.test.js tests/openai-provider.test.js tests/auth.test.js tests/document-pipeline.test.js tests/gemini-live.test.js tests/vercel-entry.test.js tests/storage.test.js tests/integration.test.js tests/hirepool-actions.test.js tests/api-client.test.js tests/provider-factory.test.js",
+    "test": "npm run test:mock",
+    "test:live": "node --env-file-if-exists=backend/.env --test tests/gemini-live.test.js",
     "test:mock": "node --test tests/config.test.js tests/session-manager.test.js tests/markdown.test.js tests/connectors.test.js tests/security.test.js tests/api-integration.test.js tests/context.test.js tests/action-protocol.test.js tests/openai-provider.test.js tests/auth.test.js tests/document-pipeline.test.js tests/vercel-entry.test.js tests/storage.test.js tests/integration.test.js tests/hirepool-actions.test.js tests/api-client.test.js tests/provider-factory.test.js"
   },
   "keywords": [
@@ -36,7 +37,7 @@
     "multer": "^2.5.0",
     "openai": "^7.47.0",
     "pdf-parse": "^2.4.5",
-    "zod": "^3.24.2"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "supertest": "^7.0.0"

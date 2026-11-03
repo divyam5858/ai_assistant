@@ -1,6 +1,9 @@
 import { test, describe, before } from 'node:test';
 import assert from 'node:assert';
 import request from 'supertest';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { setAIProvider } from '../backend/src/providers/factory.js';
 import { MockAIProvider } from '../backend/src/providers/mock.js';
 import { DOCUMENT_PROCESSING_CONSENT_VERSION } from '../config/document-upload.js';
@@ -17,6 +20,71 @@ describe('Vercel Serverless Entry Points (api/index.js & api/[...path].js)', () 
     assert.strictEqual(typeof app, 'function', 'app must be a callable Express function');
     assert.ok(app.handle, 'app must have Express handle method');
     assert.strictEqual(catchAllApp, app, '[...path].js must export the same Express application instance');
+  });
+
+  test('excludes local environment files from Vercel output', () => {
+    const ignore = readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8');
+    const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'));
+    const excludeFiles = config.functions['api/**/*.js'].excludeFiles;
+
+    assert.equal(config.outputDirectory, 'public');
+    assert.match(readFileSync(new URL('../widget/build.js', import.meta.url), 'utf8'), /public\/demo/);
+    assert.match(ignore, /^\.env\*/m);
+    assert.match(ignore, /^\*\*\/\.env\*/m);
+    assert.match(ignore, /^\.vercel\/$/m);
+    assert.ok(excludeFiles.includes('.env*'));
+    assert.ok(excludeFiles.includes('**/.env*'));
+  });
+
+  test('keeps API routes available and reports unavailable PDF workers explicitly', () => {
+    const script = `
+      import { createRequire } from 'node:module';
+      const require = createRequire(import.meta.url);
+      const Module = require('node:module');
+      const originalLoad = Module._load;
+      class MissingWorkerPDFParse {
+        static setWorker() {}
+        async getText() {
+          const error = new Error('Cannot find module "/var/task/node_modules/pdf-parse/dist/pdf-parse/cjs/pdf.worker.mjs"');
+          error.code = 'ERR_MODULE_NOT_FOUND';
+          throw error;
+        }
+        async destroy() {}
+      }
+      Module._load = function (request, parent, isMain) {
+        if (request === '@napi-rs/canvas') return {};
+        if (request === 'pdf-parse') return { PDFParse: MissingWorkerPDFParse };
+        if (request === 'pdf-parse/worker') return { getData: () => 'data:text/javascript;base64,' };
+        return originalLoad.call(this, request, parent, isMain);
+      };
+      const { createApp } = await import('./backend/src/app.js');
+      const { setAIProvider } = await import('./backend/src/providers/factory.js');
+      const { MockAIProvider } = await import('./backend/src/providers/mock.js');
+      const { default: request } = await import('supertest');
+      const { DOCUMENT_PROCESSING_CONSENT_VERSION } = await import('./config/document-upload.js');
+      setAIProvider(new MockAIProvider({ delayMs: 0 }));
+      const app = createApp();
+      await request(app).get('/api/health').expect(200);
+      await request(app).get('/api/config/default').expect(200);
+      const response = await request(app)
+        .post('/api/documents/upload')
+        .set('X-Document-Processing-Consent', 'accepted')
+        .set('X-Document-Consent-Version', DOCUMENT_PROCESSING_CONSENT_VERSION)
+        .attach('file', Buffer.from('%PDF-1.4 synthetic input'), 'sample.pdf')
+        .field('consentAccepted', 'true')
+        .field('consentVersion', DOCUMENT_PROCESSING_CONSENT_VERSION)
+        .expect(503);
+      if (response.body.error.code !== 'PDF_PROCESSOR_UNAVAILABLE') {
+        throw new Error('Missing PDF worker must return PDF_PROCESSOR_UNAVAILABLE');
+      }
+    `;
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      cwd: fileURLToPath(new URL('../', import.meta.url)),
+      encoding: 'utf8',
+      timeout: 20000
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
   });
 
   test("trusts Vercel's single forwarding proxy for client IP rate limiting", () => {

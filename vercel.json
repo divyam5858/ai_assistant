@@ -1,9 +1,11 @@
 {
   "version": 2,
   "buildCommand": "npm run build",
+  "outputDirectory": "public",
   "functions": {
     "api/**/*.js": {
       "includeFiles": "{widget/dist/**,demo/**,config/**}",
+      "excludeFiles": "{.env*,**/.env*,.vercel/**}",
       "maxDuration": 60
     }
   },
@@ -31,10 +33,6 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/sdk/:file*",
-      "destination": "/public/sdk/:file*"
-    },
     {
       "source": "/api/:path*",
       "destination": "/api/[...path]"

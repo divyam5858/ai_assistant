@@ -68,8 +68,9 @@ describe('SessionManager', () => {
     const id = 'expiry-test';
     sm.addDocument(id, { filename: 'temporary.txt', text: 'Temporary private content' });
 
-    assert.equal(sm.getDocuments(id).length, 1);
-    await new Promise(r => setTimeout(r, 60));
+    const session = sm.sessions.get(id);
+    assert.equal(session.documents.length, 1);
+    session.lastActiveAt = Date.now() - 51;
 
     assert.equal(sm.getDocuments(id).length, 0);
     assert.equal(sm.sessions.has(id), false);
