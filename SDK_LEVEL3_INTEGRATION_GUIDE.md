@@ -36,7 +36,7 @@ Build the distribution with `npm run build`, serve `public/sdk/assistant.js` (or
 The adapter contract requires `version: 1` and an application `id` and `name`. Optional callbacks:
 
 - `contextProvider()` returns an object or `null`; it is serialized and limited to 30,000 characters.
-- `getAuthHeaders()` returns header-name/string-value pairs. Header names and values are validated. Never return a long-lived secret.
+- `getAuthHeaders()` returns header-name/string-value pairs. Header names and values are validated. Never return a long-lived secret. When `getAuthHeaders()` is provided, host credentials take full precedence over default demo tokens. In standalone or public demo mode (where `getAuthHeaders` is not supplied), the SDK API client automatically acquires a short-lived, scoped guest token from `/api/auth/token` so public demo presets operate seamlessly in production without manual token configuration.
 - `canExecuteAction(actionId, parameters)` gates the client confirmation UX.
 - `executeAction({ application, actionId, parameters })` calls a host-owned operation after confirmation.
 - `credentials` may be `omit`, `same-origin` (default), or `include`.

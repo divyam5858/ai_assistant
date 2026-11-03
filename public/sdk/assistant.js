@@ -1029,11 +1029,61 @@ var AssistantSDKBundle = (() => {
      */
     constructor(baseUrl = "", options = {}) {
       this.baseUrl = baseUrl ? baseUrl.replace(/\/+$/, "") : "";
+      this.assistantId = options.assistantId || "default";
       this.getAuthHeaders = options.getAuthHeaders;
       this.credentials = options.credentials || "same-origin";
+      this._demoToken = null;
+      this._demoTokenExpiresAt = 0;
+      this._tokenFetchPromise = null;
+    }
+    /**
+     * Acquire a scoped demo token from the backend when running in standalone / demo mode
+     * without a host integration auth provider.
+     * @returns {Promise<string|null>}
+     */
+    async _getOrFetchDemoToken() {
+      if (this.getAuthHeaders) return null;
+      if (this._demoToken && Date.now() < this._demoTokenExpiresAt - 6e4) {
+        return this._demoToken;
+      }
+      if (this._tokenFetchPromise) {
+        return this._tokenFetchPromise;
+      }
+      this._tokenFetchPromise = (async () => {
+        try {
+          const url = `${this.baseUrl}/api/auth/token`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ assistantId: this.assistantId || "default" }),
+            credentials: this.credentials
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.token) {
+              this._demoToken = data.token;
+              this._demoTokenExpiresAt = Date.now() + (data.expiresIn || 3600) * 1e3;
+              return this._demoToken;
+            }
+          }
+        } catch {
+        } finally {
+          this._tokenFetchPromise = null;
+        }
+        return null;
+      })();
+      return this._tokenFetchPromise;
     }
     async _headers(json = false) {
-      const headers = this.getAuthHeaders ? await this.getAuthHeaders() : {};
+      let headers = {};
+      if (this.getAuthHeaders) {
+        headers = await this.getAuthHeaders() || {};
+      } else {
+        const token = await this._getOrFetchDemoToken();
+        if (token) {
+          headers = { Authorization: `Bearer ${token}` };
+        }
+      }
       return json ? { ...headers, "Content-Type": "application/json" } : headers;
     }
     /**
@@ -1635,6 +1685,7 @@ var AssistantSDKBundle = (() => {
       this.initializing = true;
       this.integration = integration;
       this.apiClient = new AssistantApiClient(apiUrl, {
+        assistantId,
         getAuthHeaders: this.integration ? () => this.integration.getAuthHeaders() : void 0,
         credentials: this.integration?.credentials
       });

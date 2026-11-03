@@ -263,9 +263,10 @@ export function authenticate(options = {}) {
     const isProd = process.env.NODE_ENV === 'production';
     const mode = options.mode || process.env.AUTH_MODE ||
       (isProd || process.env.JWT_SECRET ? 'jwt' : 'none');
+    const authRequiredEnv = process.env.AUTH_REQUIRED;
     const required = options.required !== undefined
       ? options.required
-      : (process.env.AUTH_REQUIRED === 'true' || isProd);
+      : (authRequiredEnv !== undefined ? authRequiredEnv === 'true' : isProd);
 
     const jwtSecret = options.jwtSecret || process.env.JWT_SECRET;
     const apiKey = options.apiKey || process.env.API_KEY;

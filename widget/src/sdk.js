@@ -95,6 +95,7 @@ class AssistantSDK {
 
     this.integration = integration;
     this.apiClient = new AssistantApiClient(apiUrl, {
+      assistantId,
       getAuthHeaders: this.integration
         ? () => this.integration.getAuthHeaders()
         : undefined,

@@ -12,6 +12,7 @@ import { summarizeRouter } from './routes/summarize.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { connectorsRouter } from './routes/connectors.js';
 import { documentsRouter } from './routes/documents.js';
+import { authRouter } from './routes/auth.js';
 import { registerIntegrationDemoActions } from './actions/integration-demo.js';
 import { registerHirePoolActions } from '../../integrations/hirepool/actions.js';
 
@@ -80,6 +81,7 @@ export function createApp() {
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/connectors', connectorsRouter);
   app.use('/api/documents', documentsRouter);
+  app.use('/api/auth', authRouter);
 
   // Serve compiled SDK distribution bundle
   const widgetDistPath = path.resolve(rootDir, 'widget/dist');
