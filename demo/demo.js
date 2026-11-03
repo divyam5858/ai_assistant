@@ -136,6 +136,10 @@ document.addEventListener('DOMContentLoaded', () => {
       logEvent('message:received', { text: msg.content.slice(0, 40) + '...' });
     });
 
+    window.AssistantSDK.on('document:uploaded', (doc) => {
+      logEvent('document:uploaded', { filename: doc.filename, type: doc.fileType, words: doc.wordCount });
+    });
+
     window.AssistantSDK.on('error', (err) => {
       logEvent('error', { message: err.message });
     });

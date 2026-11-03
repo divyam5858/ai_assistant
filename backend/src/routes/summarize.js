@@ -2,8 +2,11 @@ import { Router } from 'express';
 import { SummarizeRequestSchema } from '../../../config/schemas.js';
 import { getAIProvider } from '../providers/factory.js';
 import { sanitizePrompt } from '../middleware/security.js';
+import { authenticate } from '../middleware/auth.js';
 
 export const summarizeRouter = Router();
+
+summarizeRouter.use(authenticate());
 
 /**
  * POST /api/summarize

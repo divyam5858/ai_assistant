@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { SessionManager } from '../backend/src/session-manager.js';
+import { SessionManager, SessionExpiredError } from '../backend/src/session-manager.js';
 
 describe('SessionManager', () => {
   test('creates session with given or generated ID', () => {
@@ -63,17 +63,17 @@ describe('SessionManager', () => {
     sm.close();
   });
 
-  test('expires sessions exceeding ttlMs', async () => {
+  test('expires sessions and rejects attempts to silently recreate document context', async () => {
     const sm = new SessionManager({ ttlMs: 50 });
     const id = 'expiry-test';
-    sm.addMessage(id, 'user', 'Temporary');
+    sm.addDocument(id, { filename: 'temporary.txt', text: 'Temporary private content' });
 
-    assert.equal(sm.getContextMessages(id).length, 1);
+    assert.equal(sm.getDocuments(id).length, 1);
     await new Promise(r => setTimeout(r, 60));
 
-    // When accessed after TTL, it starts a fresh session
-    const freshSession = sm.getOrCreate(id);
-    assert.equal(freshSession.messages.length, 0);
+    assert.equal(sm.getDocuments(id).length, 0);
+    assert.equal(sm.sessions.has(id), false);
+    assert.throws(() => sm.getOrCreate(id), SessionExpiredError);
     sm.close();
   });
 
@@ -92,5 +92,35 @@ describe('SessionManager', () => {
     assert.equal(bobCtx[0].content, 'Hello from Bob');
     sm.close();
   });
-});
 
+  test('rejects access to tenant-bound sessions when tenant identity is missing', () => {
+    const sm = new SessionManager();
+    sm.getOrCreate('tenant-bound', 'default', {
+      userId: 'owner',
+      tenantId: 'tenant-a'
+    });
+
+    assert.throws(
+      () => sm.getDocuments('tenant-bound', { userId: 'owner', tenantId: null }),
+      (err) => err.code === 'TENANT_MISMATCH'
+    );
+
+    sm.getOrCreate('tenant-only', 'default', { tenantId: 'tenant-a' });
+    assert.throws(
+      () => sm.getDocuments('tenant-only'),
+      (err) => err.code === 'TENANT_MISMATCH'
+    );
+    sm.close();
+  });
+
+  test('rejects access to user-bound sessions when caller identity is omitted', () => {
+    const sm = new SessionManager();
+    sm.getOrCreate('user-bound', 'default', { userId: 'owner' });
+
+    assert.throws(
+      () => sm.getContextMessages('user-bound'),
+      (err) => err.code === 'SESSION_ACCESS_DENIED'
+    );
+    sm.close();
+  });
+});

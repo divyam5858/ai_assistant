@@ -16,15 +16,28 @@ Defined in `backend/.env` on the server:
 | `PORT` | `3000` | Port for the Express server. |
 | `HOST` | `0.0.0.0` | Host binding. |
 | `NODE_ENV` | `development` | `development` or `production`. |
-| `ALLOWED_ORIGINS` | `*` | Comma-separated list of allowed CORS origins. |
-| `GEMINI_API_KEY` | *(Required)* | Google Gemini API key. |
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Primary Gemini model. |
-| `GEMINI_FALLBACK_MODEL`| `gemini-flash-latest` | Fallback model if primary encounters transient 404/503 errors. |
+| `AI_PROVIDER` | unset | Explicit provider: `gemini`, `groq`, `openai`, or `mock` (development/tests only). Without it, available provider credentials are selected; Gemini uses Groq as fallback when both are configured. The server fails closed if no provider is configured. |
+| `GEMINI_API_KEY` | unset | Google Gemini API key. |
+| `GEMINI_MODEL` | provider default | Gemini model. |
+| `GROQ_API_KEY` | unset | Groq API key; used directly or as Gemini fallback when both credentials are configured. |
+| `GROQ_MODEL` | provider default | Groq model. |
+| `OPENAI_API_KEY` | unset | OpenAI API key. |
+| `OPENAI_MODEL` | provider default | OpenAI model. |
+| `AUTH_MODE` | `none` in development; JWT in production | `none`, `jwt`, `api-key`, or `hybrid`. Production cannot use `none`. |
+| `AUTH_REQUIRED` | `false` in development; `true` in production | Require authentication on protected API routes. |
+| `JWT_SECRET` | unset | Server-only HS256 secret required for JWT authentication. |
+| `JWT_ISSUER` / `JWT_AUDIENCE` | unset | Optional required JWT issuer/audience claims. |
+
+The public SDK API permits any browser origin through wildcard CORS. No per-site CORS environment variable is required. Wildcard CORS does not allow cross-origin cookies; use bearer authorization or the API-key header mode for cross-origin clients.
+| `API_KEY` | unset | Server-only API key required for API-key or hybrid mode. |
+| `ENABLE_HIREPOOL_INTEGRATION` | `false` | Explicitly registers the SDK's HirePool read actions on the backend. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` (1 min) | Rate limit sliding window duration in milliseconds. |
 | `RATE_LIMIT_MAX_REQUESTS`| `60` | Maximum requests permitted per IP within the window. |
 | `MAX_REQUEST_BODY_SIZE` | `1mb` | Maximum JSON request payload size. |
 | `SESSION_TTL_MS` | `7200000` (2 hrs) | Sliding expiration for server-side conversation sessions. |
 | `MAX_CONTEXT_MESSAGES` | `20` | Maximum messages preserved in active LLM context. |
+
+Document uploads are limited to 10 MiB and require the current versioned consent notice. The browser assertion is not proof of a human's consent; hosts remain responsible for their privacy notices and retention policies. Sessions and extracted text are process-local and temporary in this implementation.
 
 ---
 
@@ -86,4 +99,3 @@ export const ASSISTANT_PRESETS = {
   }
 };
 ```
-

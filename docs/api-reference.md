@@ -198,7 +198,7 @@ Synthesizes provided text according to the selected output style.
 ## 5. Session Management API
 
 ### `POST /api/sessions/clear`
-Clears the active conversation messages from the server's in-memory session store.
+Clears messages, documents, and host context from the server's in-memory session store. Ownership and tenant isolation are checked for authenticated sessions.
 
 **Request Body:**
 ```json
@@ -219,7 +219,36 @@ Clears the active conversation messages from the server's in-memory session stor
 
 ---
 
-## 6. Connectors API
+### `DELETE /api/sessions/:conversationId`
+Destroys the complete in-memory session and its document context.
+
+---
+
+## 6. Document Q&A API
+
+### `POST /api/documents/upload`
+Uploads and extracts a PDF, DOCX, or supported text file. Multipart uploads use the `file` field and may include `conversationId` and `assistantId`.
+
+The request must include:
+
+```http
+X-Document-Processing-Consent: accepted
+X-Document-Consent-Version: 1
+```
+
+The request body must also include `consentAccepted=true` and `consentVersion=1`. For multipart requests these are form fields; for JSON/base64 requests use the same fields alongside `base64Content`, `filename`, and optional `mimetype`. These assertions gate processing but do not prove a human accepted the notice.
+
+Responses include the conversation ID and document metadata, not extracted text. Extracted text is temporarily attached to the server-side session and may be sent to the configured provider on a later chat request. The default maximum file size is 10 MiB.
+
+### `GET /api/documents/:conversationId`
+Returns metadata for documents attached to the session. It does not return extracted text.
+
+### `DELETE /api/documents/:conversationId/:documentId`
+Removes one attached document. `DELETE /api/documents/:conversationId` removes all documents while retaining the conversation.
+
+---
+
+## 7. Connectors API
 
 ### `GET /api/connectors`
 Returns public metadata and supported actions for registered application connectors.
@@ -241,7 +270,7 @@ Executes an external action with server-side authorization check.
 
 ---
 
-## 7. Error Codes & HTTP Statuses
+## 8. Error Codes & HTTP Statuses
 
 | Status | Code | Description |
 | :--- | :--- | :--- |
@@ -249,8 +278,8 @@ Executes an external action with server-side authorization check.
 | `400` | `MALFORMED_JSON` | Request body is not valid JSON. |
 | `401` | `UNAUTHORIZED` | Connector action requires a valid authorization token. |
 | `403` | `CORS_FORBIDDEN` | Request origin is not permitted by CORS policy. |
+| `410` | `SESSION_EXPIRED` | Requested session expired; start a new conversation and re-upload temporary documents. |
 | `429` | `RATE_LIMIT_EXCEEDED` | Client exceeded the rate limit threshold (e.g. 60 req/min). |
 | `499` | `CLIENT_CLOSED_REQUEST` | Client aborted connection before completion. |
 | `504` | `REQUEST_TIMEOUT` | Upstream AI provider failed to respond within timeout window. |
 | `500` | `INTERNAL_SERVER_ERROR` | Safe generic error masking server internals. |
-

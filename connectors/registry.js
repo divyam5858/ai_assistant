@@ -3,8 +3,9 @@ import { MockConnector } from './mock-connector.js';
 class ConnectorRegistry {
   constructor() {
     this.connectors = new Map();
-    // Register default mock connector
-    this.register(new MockConnector());
+    if (process.env.NODE_ENV !== 'production') {
+      this.register(new MockConnector());
+    }
   }
 
   /**
@@ -16,6 +17,24 @@ class ConnectorRegistry {
       throw new Error('Connector must have an id');
     }
     this.connectors.set(connector.id, connector);
+  }
+
+  /**
+   * Unregister a connector by id
+   * @param {string} id
+   * @returns {boolean}
+   */
+  unregister(id) {
+    return this.connectors.delete(id);
+  }
+
+  /**
+   * Check if a connector is registered
+   * @param {string} id
+   * @returns {boolean}
+   */
+  has(id) {
+    return this.connectors.has(id);
   }
 
   /**

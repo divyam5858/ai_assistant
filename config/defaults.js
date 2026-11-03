@@ -2,7 +2,6 @@ export const SERVER_DEFAULTS = {
   PORT: 3000,
   HOST: '0.0.0.0',
   NODE_ENV: 'development',
-  ALLOWED_ORIGINS: ['*'],
   RATE_LIMIT: {
     WINDOW_MS: 60 * 1000, // 1 minute
     MAX_REQUESTS: 60       // 60 requests per minute

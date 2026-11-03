@@ -18,7 +18,7 @@ export function parseMarkdown(text) {
   if (!text) return '';
 
   // Filter out action code blocks from standard markdown formatting
-  const textWithoutAction = text.replace(/```(?:action:hirepool|action)\s*\n[\s\S]*?\n```/gi, '').trim();
+  const textWithoutAction = text.replace(/```(?:action:[a-zA-Z0-9_-]+|action)\s*\n[\s\S]*?\n```/gi, '').trim();
 
   // Step 1: Escape all raw HTML
   let md = escapeHtml(textWithoutAction);

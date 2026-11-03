@@ -5,8 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Assistant Plugin & SDK - Standalone Demo</title>
   <link rel="stylesheet" href="/demo/demo.css">
+
   <!-- Embed Standalone AI Assistant Widget via Script Tag -->
-  <script src="/sdk/assistant.js" data-assistant-id="default" data-theme="auto" defer></script>
+  <script
+    src="/sdk/assistant.js"
+    data-assistant-id="default"
+    data-theme="auto"
+    defer
+  ></script>
 </head>
 <body>
 
@@ -35,7 +41,9 @@
       </p>
       <div class="hero-actions">
         <button id="btnOpen" class="btn btn-primary">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/>
+          </svg>
           Open Assistant Chat
         </button>
         <button id="btnToggle" class="btn">Toggle Chat Panel</button>
@@ -174,7 +182,7 @@
           <button class="code-copy-btn">Copy</button>
           <pre>&lt;!-- Add to &lt;head&gt; or before &lt;/body&gt; --&gt;
 &lt;script
-  src="https://your-assistant-domain.com/sdk/assistant.js"
+  src="https://aiassistant-mu-mauve.vercel.app/sdk/assistant.js"
   data-assistant-id="default"
   data-theme="auto"
   data-position="bottom-right"
@@ -211,7 +219,7 @@ AssistantSDK.sendMessage('Please summarize this document.');</pre>
 export function AIAssistantWidget() {
   useEffect(() => {
     const script = document.createElement('script');
-    script.src = 'https://your-assistant-domain.com/sdk/assistant.js';
+    script.src = 'https://aiassistant-mu-mauve.vercel.app/sdk/assistant.js';
     script.setAttribute('data-assistant-id', 'default');
     script.async = true;
     document.body.appendChild(script);
@@ -235,4 +243,3 @@ export function AIAssistantWidget() {
   <script src="/demo/demo.js"></script>
 </body>
 </html>
-

@@ -12,7 +12,7 @@ Before deploying, run the build process:
 npm run build:widget
 ```
 
-This generates the minified standalone bundle `widget/dist/assistant.min.js` (~35 KB), which is served automatically by the backend at `/sdk/assistant.js`.
+This generates the minified standalone bundle `widget/dist/assistant.min.js` (about 68 KB in the current build), which is served automatically by the backend at `/sdk/assistant.js`.
 
 ---
 
@@ -76,6 +76,7 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/backend ./backend
 COPY --from=builder /app/config ./config
 COPY --from=builder /app/connectors ./connectors
+COPY --from=builder /app/integrations ./integrations
 COPY --from=builder /app/demo ./demo
 COPY --from=builder /app/widget/dist ./widget/dist
 
@@ -102,9 +103,14 @@ The assistant backend and embeddable SDK can be deployed as a unified project on
 
 ### Prerequisites & Required Environment Variables
 Configure the following in your Vercel Project Settings -> Environment Variables:
-- `GEMINI_API_KEY`: Google Gemini API key.
-- `GEMINI_MODEL`: (Optional, defaults to `gemini-flash-lite-latest`).
-- `ALLOWED_ORIGINS`: Set to `*` or comma-separated allowed origins (e.g., `https://hirepool.ai,https://dev.hirepool.ai`).
+- `AI_PROVIDER`: Explicitly select a configured provider (`gemini`, `groq`, or `openai`).
+- The selected provider's server-only credential, such as `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY`.
+- `AUTH_MODE=jwt` and `JWT_SECRET` (plus optional `JWT_ISSUER` / `JWT_AUDIENCE`) for authenticated production APIs.
+- `ENABLE_HIREPOOL_INTEGRATION=true` only when intentionally registering the bundled HirePool read actions.
+
+The SDK API is available to any website origin. Express supplies wildcard CORS for API responses; Vercel does not add a second API CORS policy. Cookie credentials are not allowed cross-origin with this policy; use `Authorization` bearer tokens or `X-API-Key`. No CORS allowlist environment variable is required.
+
+PDF extraction uses the parser package's embedded worker data; the serverless function no longer depends on a separate `pdf.worker.mjs` file being packaged.
 
 ### Deploy via Vercel CLI
 ```bash
@@ -124,5 +130,3 @@ npx vercel --prod
 - Health Probe: `https://<deployed-url>/api/health`
 - Streaming Chat: `https://<deployed-url>/api/chat/stream`
 - Interactive Demo: `https://<deployed-url>/demo`
-
-

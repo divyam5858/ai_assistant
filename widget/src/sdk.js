@@ -1,7 +1,9 @@
 import { AssistantWidgetUI } from './widget.js';
 import { AssistantApiClient } from './api-client.js';
 import { AssistantStorage } from './storage.js';
+import { HostIntegrationAdapter, serializeContext } from './integration.js';
 import cssText from './styles.css';
+import { normalizeDocumentUploadSettings } from '../../config/document-upload.js';
 
 /**
  * Event emitter for SDK lifecycle and conversation events
@@ -54,7 +56,10 @@ class AssistantSDK {
     this.widgetUI = null;
     this.apiClient = null;
     this.storage = null;
+    this.integration = null;
     this.config = null;
+    this.integrationUnsubscribe = null;
+    this.integrationHookUnsubscribes = [];
   }
 
   /**
@@ -78,13 +83,27 @@ class AssistantSDK {
     if (this.initializing) {
       return this;
     }
-    this.initializing = true;
 
     const assistantId = options.assistantId || 'default';
     const apiUrl = options.apiUrl || this._detectApiUrl();
+    const integration = options.integration
+      ? new HostIntegrationAdapter(options.integration)
+      : null;
+    const initialContext = serializeContext(options.context);
+    const documentUpload = normalizeDocumentUploadSettings(options.documentUpload);
+    this.initializing = true;
 
-    this.apiClient = new AssistantApiClient(apiUrl);
-    this.storage = new AssistantStorage(assistantId);
+    this.integration = integration;
+    this.apiClient = new AssistantApiClient(apiUrl, {
+      getAuthHeaders: this.integration
+        ? () => this.integration.getAuthHeaders()
+        : undefined,
+      credentials: this.integration?.credentials
+    });
+    const storageNamespace = integration
+      ? `${integration.application.id}:${assistantId}`
+      : assistantId;
+    this.storage = new AssistantStorage(storageNamespace);
 
     // Fetch server-side public configuration for this assistant
     let serverConfig = {};
@@ -106,9 +125,9 @@ class AssistantSDK {
       position: options.position || serverConfig.position || 'bottom-right',
       greeting: options.greeting || serverConfig.greeting || 'Hello! How can I help you today?',
       suggestedPrompts: options.suggestedPrompts || serverConfig.suggestedPrompts || [],
-      context: (typeof options.context === 'string' && options.context.trim().length > 0)
-        ? options.context.trim()
-        : null,
+      context: initialContext,
+      applicationId: this.integration?.application.id || null,
+      documentUpload,
       features: {
         ...(serverConfig.features || {}),
         ...(options.features || {})
@@ -121,7 +140,34 @@ class AssistantSDK {
     this.initializing = false;
 
     // Instantiate and mount widget UI
-    this.widgetUI = new AssistantWidgetUI(this.config, this.apiClient, this.storage, this.events);
+    this.widgetUI = new AssistantWidgetUI({
+      ...this.config,
+      integration: this.integration
+    }, this.apiClient, this.storage, this.events);
+    if (this.integration?.actionExecutor) {
+      this.integrationUnsubscribe = this.events.on('action:execute', async (request) => {
+        try {
+          const result = await this.integration.executeHostAction(request.action, request.parameters);
+          request.resolve(result);
+        } catch (err) {
+          request.reject(err);
+        }
+      });
+    }
+    if (this.integration) {
+      this.integrationHookUnsubscribes.push(
+        this.events.on('action:proposed', action => this.integration?.notifyActionProposed(action)),
+        this.events.on('action:success', result => this.integration?.notifyActionResult({ status: 'success', ...result })),
+        this.events.on('action:error', result => this.integration?.notifyActionResult({ status: 'error', ...result })),
+        this.events.on('error', error => this.integration?.notifyError(error))
+      );
+      const unsubscribe = this.integration.subscribeToContextChanges(() => {
+        this.refreshContext().catch(error => {
+          this.events.emit('error', error);
+        });
+      });
+      this.integrationHookUnsubscribes.push(unsubscribe);
+    }
     this.widgetUI.mount(cssText);
 
     this.initialized = true;
@@ -191,7 +237,7 @@ class AssistantSDK {
    */
   clearConversation() {
     this._ensureInit();
-    this.widgetUI.newConversation();
+    return this.widgetUI.newConversation();
   }
 
   /**
@@ -218,9 +264,7 @@ class AssistantSDK {
    */
   setContext(context) {
     this._ensureInit();
-    const normalized = (typeof context === 'string' && context.trim().length > 0)
-      ? context.trim()
-      : null;
+    const normalized = serializeContext(context);
     this.config.context = normalized;
     if (this.widgetUI) {
       this.widgetUI.setContext(normalized);
@@ -233,7 +277,37 @@ class AssistantSDK {
    * Clear active host application context
    */
   clearContext() {
-    return this.setContext(null);
+    this._ensureInit();
+    if (!this.integration) return this.setContext(null);
+    this.widgetUI.contextOverrideSet = false;
+    return this.refreshContext();
+  }
+
+  async refreshContext() {
+    this._ensureInit();
+    if (!this.integration) return this.config.context;
+    const context = await this.integration.getContext();
+    if (!this.widgetUI.contextOverrideSet) {
+      this.config.context = context;
+      this.widgetUI.setContext(context, false);
+    }
+    this.events.emit('context:updated', { context });
+    return context;
+  }
+
+  getHostIdentity() {
+    this._ensureInit();
+    return this.integration?.getIdentity() || Promise.resolve(null);
+  }
+
+  getHostPermissions() {
+    this._ensureInit();
+    return this.integration?.getPermissions() || Promise.resolve([]);
+  }
+
+  getAvailableActions() {
+    this._ensureInit();
+    return this.integration?.getAvailableActions() || Promise.resolve([]);
   }
 
   /**
@@ -284,6 +358,11 @@ class AssistantSDK {
       this.widgetUI = null;
     }
     this.events.clear();
+    this.integrationUnsubscribe?.();
+    this.integrationUnsubscribe = null;
+    for (const unsubscribe of this.integrationHookUnsubscribes) unsubscribe();
+    this.integrationHookUnsubscribes = [];
+    this.integration = null;
     this.storage = null;
     this.apiClient = null;
     this.config = null;
@@ -327,7 +406,8 @@ if (typeof window !== 'undefined') {
     const assistantId = currentScript.getAttribute('data-assistant-id');
     const autoload = currentScript.getAttribute('data-autoload');
 
-    if (assistantId || autoload === 'true') {
+    const appId = currentScript.getAttribute('data-app-id');
+    if (assistantId || appId || autoload === 'true') {
       const options = {
         assistantId: assistantId || 'default',
         apiUrl: currentScript.getAttribute('data-api-url') || undefined,
@@ -335,7 +415,11 @@ if (typeof window !== 'undefined') {
         primaryColor: currentScript.getAttribute('data-primary-color') || undefined,
         position: currentScript.getAttribute('data-position') || undefined,
         greeting: currentScript.getAttribute('data-greeting') || undefined,
-        context: currentScript.getAttribute('data-context') || undefined
+        context: currentScript.getAttribute('data-context') || undefined,
+        integration: appId ? {
+          version: 1,
+          application: { id: appId, name: appId }
+        } : undefined
       };
 
       // Remove undefined keys
@@ -355,4 +439,3 @@ if (typeof window !== 'undefined') {
 }
 
 export default sdkInstance;
-

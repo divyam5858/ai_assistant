@@ -1,9 +1,19 @@
 import { BaseAIProvider } from './base.js';
 import { GeminiProvider } from './gemini.js';
 import { GroqProvider } from './groq.js';
+import { OpenAIProvider } from './openai.js';
 import { MockAIProvider } from './mock.js';
 
 let activeProviderInstance = null;
+
+export class ProviderConfigurationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'ProviderConfigurationError';
+    this.statusCode = 503;
+    this.code = 'PROVIDER_NOT_CONFIGURED';
+  }
+}
 
 /**
  * Resilient fallback provider wrapper
@@ -35,7 +45,7 @@ export class ResilientFallbackProvider extends BaseAIProvider {
     } catch (err) {
       const isRetryable = err.statusCode === 429 || err.statusCode === 503 || err.statusCode === 504 || (err.message && err.message.includes('429'));
       if (this.fallback && isRetryable) {
-        console.warn(`[AI Provider] Primary provider failed (${err.message}), falling back to ${this.fallback.name}...`);
+        console.warn(`[AI Provider] Primary provider failed with status ${err.statusCode || 'unknown'}; falling back to ${this.fallback.name}.`);
         return await this.fallback.chat(options);
       }
       throw err;
@@ -48,7 +58,7 @@ export class ResilientFallbackProvider extends BaseAIProvider {
     } catch (err) {
       const isRetryable = err.statusCode === 429 || err.statusCode === 503 || err.statusCode === 504 || (err.message && err.message.includes('429'));
       if (this.fallback && isRetryable) {
-        console.warn(`[AI Provider] Primary provider stream failed (${err.message}), falling back to ${this.fallback.name}...`);
+        console.warn(`[AI Provider] Primary provider stream failed with status ${err.statusCode || 'unknown'}; falling back to ${this.fallback.name}.`);
         return await this.fallback.chatStream(options);
       }
       throw err;
@@ -74,10 +84,15 @@ function instantiateProvider(name, options = {}) {
       return new GeminiProvider(options);
     case 'groq':
       return new GroqProvider(options);
+    case 'openai':
+      return new OpenAIProvider(options);
     case 'mock':
+      if (process.env.NODE_ENV === 'production') {
+        throw new ProviderConfigurationError('The mock AI provider is disabled in production.');
+      }
       return new MockAIProvider(options);
     default:
-      throw new Error(`Unknown AI provider: "${name}". Supported providers: "gemini", "groq", "mock"`);
+      throw new Error(`Unknown AI provider: "${name}". Supported providers: "gemini", "groq", "openai", "mock"`);
   }
 }
 
@@ -104,8 +119,11 @@ export function getAIProvider(providerName, options = {}) {
 
   const hasGemini = !!process.env.GEMINI_API_KEY;
   const hasGroq = !!process.env.GROQ_API_KEY;
+  const hasOpenAI = !!process.env.OPENAI_API_KEY;
 
-  if (hasGemini && hasGroq) {
+  if (hasOpenAI && !hasGemini && !hasGroq) {
+    activeProviderInstance = new OpenAIProvider(options);
+  } else if (hasGemini && hasGroq) {
     const primary = new GeminiProvider(options);
     const fallback = new GroqProvider(options);
     activeProviderInstance = new ResilientFallbackProvider(primary, fallback);
@@ -113,8 +131,13 @@ export function getAIProvider(providerName, options = {}) {
     activeProviderInstance = new GeminiProvider(options);
   } else if (hasGroq) {
     activeProviderInstance = new GroqProvider(options);
+  } else if (hasOpenAI) {
+    activeProviderInstance = new OpenAIProvider(options);
   } else {
-    activeProviderInstance = new MockAIProvider(options);
+    if (process.env.NODE_ENV === 'production') {
+      throw new ProviderConfigurationError('No AI provider credentials are configured. Set AI_PROVIDER and the required provider credentials.');
+    }
+    throw new ProviderConfigurationError('No AI provider is configured. Set AI_PROVIDER explicitly or provide provider credentials; select AI_PROVIDER=mock only for development or tests.');
   }
 
   return activeProviderInstance;

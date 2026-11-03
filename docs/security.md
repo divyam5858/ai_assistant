@@ -13,15 +13,12 @@ The AI Assistant Plugin implements defense-in-depth principles across the browse
 
 ---
 
-## 2. Origin Validation & Cross-Origin Resource Sharing (CORS)
+## 2. Cross-Origin Resource Sharing (CORS)
 
-- In development, `ALLOWED_ORIGINS` defaults to `*` or local development ports (`http://localhost:3000`).
-- In production, specify an explicit comma-separated list of allowed domains:
-  ```ini
-  ALLOWED_ORIGINS=https://app.company.com,https://dashboard.company.com
-  ```
-- Unauthorized origins receive an immediate `403 Forbidden` response.
-- Note: CORS is not authorization. Public endpoints remain protected by rate limiting and input size controls.
+- The public SDK API responds with `Access-Control-Allow-Origin: *`; websites do not need to be added to an origin allowlist.
+- API preflight supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`, with `OPTIONS` handled by the CORS middleware. The allow-header list includes bearer/API-key authorization and document consent headers.
+- API CORS does not enable `Access-Control-Allow-Credentials`. Cross-origin cookie/session authentication is therefore not supported with the wildcard policy. Use the existing `Authorization: Bearer ...` or `X-API-Key` header modes. Same-origin cookie requests may still use the SDK's default `same-origin` fetch credentials setting.
+- CORS is not authorization. Production authentication, session ownership, connector authorization, document consent, rate limiting, and request validation remain enforced independently of `Origin` or `Referer`.
 
 ---
 
@@ -57,3 +54,10 @@ The AI Assistant Plugin implements defense-in-depth principles across the browse
 - Connectors enforcing access to protected records (e.g. `MockConnector.getCustomerProfile`) require a valid server-validated `authToken`.
 - Authorization checks are executed entirely server-side; client claims are never trusted blindly.
 
+## 7. Authentication, actions, and documents
+
+- Production API routes require authentication by default. Configure `AUTH_MODE=jwt` (or `api-key`/`hybrid`) and the corresponding server-only secret; `AUTH_MODE=none` is rejected in production.
+- The generic action registry starts empty. Application action definitions are registered explicitly, filtered using verified backend claims where configured, and must be authorized again by the host API at execution time.
+- Document upload requires the current versioned consent assertion before multipart parsing and before extraction. It is a protocol check, not cryptographic proof that a person clicked a checkbox. The host must provide accurate, applicable privacy language.
+- Extracted document text is held in temporary process memory and can be sent to the configured AI provider with later chat requests. Avoid uploads of data that the host is not permitted to transmit; configure retention and deletion at the deployment boundary.
+- The PDF parser uses the package's embedded worker data to avoid relying on a separate worker file being present in a serverless deployment.

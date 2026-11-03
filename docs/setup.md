@@ -45,7 +45,6 @@ HOST=localhost
 NODE_ENV=development
 
 # Allowed CORS Origins (comma-separated list, or * for open development)
-ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
 
 # Google Gemini API Provider Configuration
 GEMINI_API_KEY=your_actual_gemini_api_key_here
@@ -76,7 +75,7 @@ npm run build:widget
 
 This command runs `esbuild` to compile `widget/src/sdk.js` and inlines `widget/src/styles.css` into:
 - `widget/dist/assistant.js` (standard bundle with source map, ~52 KB)
-- `widget/dist/assistant.min.js` (production minified bundle, ~35 KB)
+- `widget/dist/assistant.min.js` (production minified bundle, about 68 KB in the current build)
 
 ---
 
@@ -148,4 +147,3 @@ node --env-file=backend/.env --test tests/**/*.test.js
 - `tests/security.test.js`: Verifies API key protection, prompt sanitization, and safe error masking.
 - `tests/api-integration.test.js`: Integration tests for all REST/SSE endpoints using Express and Supertest.
 - `tests/gemini-live.test.js`: End-to-end tests calling the live Gemini API.
-

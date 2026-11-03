@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { actionRegistry, createActionProposalSchema, ActionDefinitionSchema } from '../backend/src/actions/registry.js';
 
 export const HexColorRegex = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
@@ -36,7 +37,7 @@ export const AssistantConfigSchema = z.object({
 });
 
 export const ChatMessageSchema = z.object({
-  role: z.enum(['user', 'assistant', 'system']),
+  role: z.enum(['user', 'assistant']),
   content: z.string().max(20000).default('')
 });
 
@@ -47,6 +48,7 @@ export const ChatRequestSchema = z.object({
   conversationId: z.string().max(64).nullable().optional(),
   history: z.array(ChatMessageSchema).max(30).nullable().optional().default([]),
   stream: z.boolean().optional().default(false),
+  connectorAuth: z.record(z.string()).optional().default({}),
   parameters: z.object({
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().min(1).max(8192).optional()
@@ -68,17 +70,6 @@ export const ConnectorActionSchema = z.object({
   authToken: z.string().optional()
 });
 
-export const ALLOWED_ACTIONS = [
-  'candidate:apply_job',
-  'consultancy:add_candidate',
-  'consultancy:create_candidates_batch',
-  'client:create_job'
-];
+export { ActionDefinitionSchema };
 
-export const ActionProposalSchema = z.object({
-  id: z.string().min(1).max(64),
-  action: z.enum(ALLOWED_ACTIONS),
-  title: z.string().min(1).max(120),
-  explanation: z.string().max(1000).optional().default(''),
-  parameters: z.record(z.any()).default({})
-});
+export const ActionProposalSchema = createActionProposalSchema(actionRegistry);

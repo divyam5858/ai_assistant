@@ -54,6 +54,18 @@ export class BaseConnector {
   }
 
   /**
+   * Return structured action definitions eligible for chat discovery and ActionRegistry.
+   * By default, returns an empty array. Connectors must override this method to explicitly
+   * declare structured ActionDefinition objects that are safe and vetted to expose to the model.
+   * Actions declared only as string names in `this.actions` remain callable via direct
+   * connector execution routes (/api/connectors/execute) without being exposed to chat prompts.
+   * @returns {Array<object>} List of definitions compatible with ActionDefinitionSchema
+   */
+  getActionDefinitions() {
+    return [];
+  }
+
+  /**
    * Execute a connector action.
    * @param {string} action
    * @param {object} parameters

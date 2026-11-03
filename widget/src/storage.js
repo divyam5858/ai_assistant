@@ -56,10 +56,27 @@ export class AssistantStorage {
     } catch {}
   }
 
+  getConversationId() {
+    return this.get('conversation_id', null);
+  }
+
+  saveConversationId(conversationId) {
+    if (typeof conversationId === 'string' && conversationId.trim()) {
+      this.set('conversation_id', conversationId.trim());
+    } else {
+      this.clearConversationId();
+    }
+  }
+
+  clearConversationId() {
+    this.remove('conversation_id');
+  }
+
   clear() {
     try {
-      this.remove('conversation_id');
+      this.clearConversationId();
       this.remove('messages');
+      this.remove('documents');
       this.remove('is_open');
     } catch {}
   }

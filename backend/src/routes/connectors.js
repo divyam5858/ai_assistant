@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { registry } from '../../../connectors/registry.js';
 import { ConnectorActionSchema } from '../../../config/schemas.js';
+import { authenticate } from '../middleware/auth.js';
 
 export const connectorsRouter = Router();
+
+connectorsRouter.use(authenticate());
 
 /**
  * GET /api/connectors

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Generic Host Integration Demo</title>
+  <link rel="stylesheet" href="/demo/demo.css">
+  <script src="/sdk/assistant.js" data-autoload="false" defer></script>
+  <script src="/demo/integration.js" defer></script>
+</head>
+<body>
+  <main class="container">
+    <section class="hero">
+      <h1>Generic Host Integration Demo</h1>
+      <p>This mock application demonstrates live context, host action proposals, confirmation, and host-side execution.</p>
+      <p><strong>Mock only:</strong> no real application API, identity provider, or database is connected.</p>
+    </section>
+    <section class="card">
+      <h2 class="card-title">Current mock note</h2>
+      <p id="integrationStatus">Initializing the SDK...</p>
+      <pre id="mockNote"></pre>
+    </section>
+  </main>
+</body>
+</html>

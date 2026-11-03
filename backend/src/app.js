@@ -11,13 +11,26 @@ import { chatRouter } from './routes/chat.js';
 import { summarizeRouter } from './routes/summarize.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { connectorsRouter } from './routes/connectors.js';
+import { documentsRouter } from './routes/documents.js';
+import { registerIntegrationDemoActions } from './actions/integration-demo.js';
+import { registerHirePoolActions } from '../../integrations/hirepool/actions.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '../..');
 
 export function createApp() {
+  if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_INTEGRATION_DEMO === 'true') {
+    registerIntegrationDemoActions();
+  }
+  if (process.env.ENABLE_HIREPOOL_INTEGRATION === 'true') {
+    registerHirePoolActions();
+  }
+
   const app = express();
+  if (process.env.VERCEL) {
+    app.set('trust proxy', 1);
+  }
 
   // Basic security & parsing
   app.use(configureHelmet());
@@ -50,6 +63,7 @@ export function createApp() {
   app.use('/api/summarize', summarizeRouter);
   app.use('/api/sessions', sessionsRouter);
   app.use('/api/connectors', connectorsRouter);
+  app.use('/api/documents', documentsRouter);
 
   // Serve compiled SDK distribution bundle
   const widgetDistPath = path.resolve(rootDir, 'widget/dist');
@@ -82,4 +96,3 @@ export function createApp() {
 
   return app;
 }
-

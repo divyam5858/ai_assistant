@@ -23,8 +23,10 @@ export class AssistantWidgetUI {
     this.isOpen = false;
     this.isGenerating = false;
     this.abortController = null;
+    this.documentUploadController = null;
     this.messages = [];
     this.activeConversationId = null;
+    this.contextOverrideSet = false;
 
     this.hostElement = null;
     this.shadowRoot = null;
@@ -67,6 +69,7 @@ export class AssistantWidgetUI {
     if (this.abortController) {
       this.abortController.abort();
     }
+    this.cancelDocumentUpload();
     if (this.hostElement && this.hostElement.parentNode) {
       this.hostElement.parentNode.removeChild(this.hostElement);
     }
@@ -153,10 +156,10 @@ export class AssistantWidgetUI {
 
       <footer class="ai-footer">
         <form class="ai-input-form" onsubmit="return false;">
-          <button class="ai-attach-btn" type="button" aria-label="Upload document" title="Upload candidate document (PDF, DOCX)">
+          <button class="ai-attach-btn" type="button" aria-label="Upload document" title="Upload a document (PDF, DOCX, TXT)">
             ${ICONS.attachment}
           </button>
-          <input type="file" class="ai-file-input" accept=".pdf,.docx,.doc,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword" style="display: none;" />
+          <input type="file" class="ai-file-input" accept=".pdf,.docx,.txt,.text,.md,.markdown,.csv,.json,.log,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown,text/csv,application/json" style="display: none;" />
           <textarea
             class="ai-textarea"
             placeholder="Ask a question or request a summary..."
@@ -185,6 +188,7 @@ export class AssistantWidgetUI {
     this.stopBtn = panel.querySelector('.ai-stop-btn');
     this.attachBtn = panel.querySelector('.ai-attach-btn');
     this.fileInput = panel.querySelector('.ai-file-input');
+    this.fileInput.accept = this.options.documentUpload?.allowedExtensions?.join(',') || '.pdf,.docx,.txt';
     this.body = panel.querySelector('.ai-body');
 
     container.appendChild(panel);
@@ -313,7 +317,7 @@ export class AssistantWidgetUI {
 
   _restoreState() {
     const savedMessages = this.storage.get('messages', []);
-    const savedConvoId = this.storage.get('conversation_id', null);
+    const savedConvoId = this.storage.getConversationId();
     const wasOpen = this.storage.get('is_open', false);
 
     this.activeConversationId = savedConvoId;
@@ -331,7 +335,7 @@ export class AssistantWidgetUI {
 
   _persistState() {
     this.storage.set('messages', this.messages);
-    this.storage.set('conversation_id', this.activeConversationId);
+    this.storage.saveConversationId(this.activeConversationId);
     this.storage.set('is_open', this.isOpen);
   }
 
@@ -385,14 +389,23 @@ export class AssistantWidgetUI {
     this.options.position = pos;
   }
 
-  setContext(context) {
-    this.options.context = (typeof context === 'string' && context.trim().length > 0)
-      ? context.trim()
-      : null;
+  setContext(context, override = true) {
+    this.options.context = context;
+    this.contextOverrideSet = override;
   }
 
-  newConversation() {
+  async newConversation() {
     this.cancelGeneration();
+    this.cancelDocumentUpload();
+    if (this.activeConversationId) {
+      try {
+        await this.apiClient.clearSession(this.activeConversationId);
+      } catch (err) {
+        this._renderErrorBanner(`Could not clear the previous conversation: ${err.message}`);
+        this.events.emit('error', err);
+        return false;
+      }
+    }
     this.activeConversationId = null;
     this.messages = [];
     this.messagesList.innerHTML = '';
@@ -401,6 +414,7 @@ export class AssistantWidgetUI {
     this._setGenerating(false);
     this.events.emit('conversation:cleared');
     this.textarea.focus();
+    return true;
   }
 
   cancelGeneration() {
@@ -438,7 +452,7 @@ export class AssistantWidgetUI {
       return actionProp;
     }
     if (!text || typeof text !== 'string') return null;
-    const match = text.match(/```(?:action:hirepool|action)\s*\n([\s\S]*?)\n```/i);
+    const match = text.match(/```(?:action:[a-zA-Z0-9_-]+|action)\s*\n([\s\S]*?)\n```/i);
     if (!match) return null;
     try {
       const data = JSON.parse(match[1].trim());
@@ -462,11 +476,11 @@ export class AssistantWidgetUI {
     card.className = 'ai-action-card';
     card.setAttribute('data-action-id', actionId);
     card.setAttribute('data-action-type', action.action);
+    this.events.emit('action:proposed', action);
+    const risk = ['read', 'write', 'destructive'].includes(action.risk) ? action.risk : 'write';
+    const requiresAcknowledgement = risk === 'destructive';
 
-    const badgeLabel = action.action.startsWith('candidate:') ? 'Candidate Action'
-      : action.action.startsWith('consultancy:') ? 'Agency Action'
-      : action.action.startsWith('client:') ? 'Client Action'
-      : 'Action';
+    const badgeLabel = 'Application action';
 
     // Format parameters
     const params = action.parameters || {};
@@ -486,13 +500,20 @@ export class AssistantWidgetUI {
     card.innerHTML = `
       <div class="ai-action-header">
         <span class="ai-action-badge">${badgeLabel}</span>
+        <span class="ai-action-risk risk-${risk}">${risk === 'destructive' ? 'Destructive' : risk === 'read' ? 'Read' : 'Write'}</span>
         <span class="ai-action-title">${escapeHtml(action.title || 'Proposed Action')}</span>
       </div>
       ${action.explanation ? `<p class="ai-action-explanation">${escapeHtml(action.explanation)}</p>` : ''}
       ${paramRowsHtml ? `<div class="ai-action-details">${paramRowsHtml}</div>` : ''}
+      ${requiresAcknowledgement ? `
+        <label class="ai-action-acknowledgement">
+          <input type="checkbox" class="ai-action-acknowledge">
+          I understand this action may be difficult to undo.
+        </label>
+      ` : ''}
       <div class="ai-action-status-msg" style="display: none;"></div>
       <div class="ai-action-controls">
-        <button type="button" class="ai-btn-action-confirm">Confirm &amp; Execute</button>
+        <button type="button" class="ai-btn-action-confirm" ${requiresAcknowledgement ? 'disabled' : ''}>Confirm &amp; Execute</button>
         <button type="button" class="ai-btn-action-cancel">Cancel</button>
       </div>
     `;
@@ -501,8 +522,13 @@ export class AssistantWidgetUI {
     const btnCancel = card.querySelector('.ai-btn-action-cancel');
     const statusMsg = card.querySelector('.ai-action-status-msg');
     const controls = card.querySelector('.ai-action-controls');
+    const acknowledgement = card.querySelector('.ai-action-acknowledge');
 
     let executing = false;
+
+    acknowledgement?.addEventListener('change', () => {
+      btnConfirm.disabled = !acknowledgement.checked;
+    });
 
     btnConfirm.addEventListener('click', () => {
       if (executing) return;
@@ -512,7 +538,7 @@ export class AssistantWidgetUI {
 
       statusMsg.style.display = 'flex';
       statusMsg.className = 'ai-action-status-msg executing';
-      statusMsg.innerHTML = 'Executing action in Hirepool...';
+      statusMsg.textContent = 'Executing action in the host application...';
 
       let handled = false;
 
@@ -577,308 +603,203 @@ export class AssistantWidgetUI {
   _handleFileUpload(file) {
     if (!file) return;
 
-    // Validate extension
-    const ext = '.' + file.name.split('.').pop().toLowerCase();
-    const allowed = ['.pdf', '.docx', '.doc'];
-    if (!allowed.includes(ext)) {
-      this._renderMessageBubble('assistant', '⚠️ Unsupported file type. Please upload a PDF or DOCX document.');
+    const settings = this.options.documentUpload;
+    if (!settings?.enabled) {
+      this._renderMessageBubble('assistant', 'Document upload is disabled for this assistant.');
       return;
     }
 
-    // Validate size (10 MB limit)
-    const MAX_SIZE = 10 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
-      this._renderMessageBubble('assistant', '⚠️ File exceeds 10MB limit. Please upload a smaller document.');
+    const filename = typeof file.name === 'string' ? file.name : 'document';
+    const extension = '.' + filename.split('.').pop().toLowerCase();
+    if (!settings.allowedExtensions.includes(extension)) {
+      this._renderMessageBubble('assistant', 'Unsupported document type.');
+      return;
+    }
+    if (!Number.isFinite(file.size) || file.size < 1 || file.size > settings.maxSizeBytes) {
+      const limitMb = Math.floor(settings.maxSizeBytes / (1024 * 1024));
+      this._renderMessageBubble('assistant', `Document exceeds the ${limitMb} MB upload limit or is empty.`);
       return;
     }
 
     const sizeFormatted = (file.size / 1024).toFixed(0) + ' KB';
-
-    // 1. Render user upload bubble
-    this.messages.push({ role: 'user', content: `📎 Uploaded document: ${file.name} (${sizeFormatted})` });
-    this._renderMessageBubble('user', `📎 Uploaded document: ${file.name} (${sizeFormatted})`);
-    this._persistState();
-
-    // 2. Render assistant processing placeholder bubble
+    const hasHostListener = Boolean(this.events?.listeners?.get('file:upload')?.size > 0);
+    const consent = settings.consent;
+    const consentId = `ai-document-consent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const row = document.createElement('div');
     row.className = 'ai-message-row assistant';
     const bubble = document.createElement('div');
     bubble.className = 'ai-bubble';
+    const description = hasHostListener ? consent.hostDescription : consent.description;
+    const checkboxLabel = hasHostListener ? consent.hostCheckboxLabel : consent.checkboxLabel;
+
     bubble.innerHTML = `
-      <div class="ai-processing-state">
-        <span class="ai-spinner"></span>
-        <span>Processing <strong>${escapeHtml(file.name)}</strong>... Extracting candidates and validating details.</span>
-      </div>
+      <section class="ai-document-consent" role="group" aria-labelledby="${consentId}-title">
+        <h3 id="${consentId}-title">${escapeHtml(consent.title)}</h3>
+        <p>${escapeHtml(description)}</p>
+        <label class="ai-document-consent-choice" for="${consentId}-accepted">
+          <input id="${consentId}-accepted" type="checkbox" class="ai-document-consent-checkbox">
+          <span>${escapeHtml(checkboxLabel)}</span>
+        </label>
+        <div class="ai-document-consent-controls">
+          <button type="button" class="ai-btn-document-consent-accept" disabled>Continue</button>
+          <button type="button" class="ai-btn-document-consent-cancel">Cancel</button>
+        </div>
+      </section>
     `;
     row.appendChild(bubble);
     this.messagesList.appendChild(row);
     this._scrollToBottom();
 
-    // 3. Emit file:upload event to host adapter
-    let handled = false;
-    this.events.emit('file:upload', {
-      file,
-      filename: file.name,
-      fileSize: file.size,
-      fileType: file.type,
-      resolve: (data) => {
-        handled = true;
-        bubble.innerHTML = '';
-        if (data && data.candidates && data.candidates.length > 0) {
-          this._renderCandidateReviewCard(bubble, data);
-        } else {
-          bubble.innerHTML = `<p>No candidate records could be extracted from <strong>${escapeHtml(file.name)}</strong>.</p>`;
-        }
-        this._scrollToBottom();
-      },
-      reject: (err) => {
-        handled = true;
-        bubble.innerHTML = `
-          <div class="ai-action-status-msg error">
-            ⚠️ ${escapeHtml(err?.message || 'Failed to process document')}
-          </div>
-        `;
-        this._scrollToBottom();
-      }
+    const checkbox = bubble.querySelector('.ai-document-consent-checkbox');
+    const acceptButton = bubble.querySelector('.ai-btn-document-consent-accept');
+    const cancelButton = bubble.querySelector('.ai-btn-document-consent-cancel');
+    checkbox.addEventListener('change', () => {
+      acceptButton.disabled = !checkbox.checked;
     });
-
-    // Safety timeout
-    setTimeout(() => {
-      if (!handled) {
-        bubble.innerHTML = `
-          <div class="ai-action-status-msg error">
-            ⚠️ Document processing timed out. Please ensure you are logged into an authorized agency account.
-          </div>
-        `;
-        this._scrollToBottom();
-      }
-    }, 45000);
-  }
-
-  _renderCandidateReviewCard(bubble, data) {
-    const candidates = JSON.parse(JSON.stringify(data.candidates || []));
-    const filename = data.filename || 'Uploaded Document';
-
-    const card = document.createElement('div');
-    card.className = 'ai-candidate-review-card';
-
-    let consentConfirmed = true;
-
-    // Track selected candidates: default true for eligible candidates
-    const selectedIndices = new Set();
-    candidates.forEach((cand, idx) => {
-      if (cand.eligible_for_creation) {
-        selectedIndices.add(idx);
-      }
+    acceptButton.addEventListener('click', () => {
+      if (!checkbox.checked || acceptButton.disabled) return;
+      this.events.emit('document:consent-accepted', { filename });
+      this._processFileUpload(file, bubble, sizeFormatted, hasHostListener);
     });
-
-    const updateSummary = () => {
-      const countEl = card.querySelector('.ai-sel-count');
-      if (countEl) countEl.textContent = selectedIndices.size;
-      const confirmBtn = card.querySelector('.ai-btn-confirm-candidates');
-      if (confirmBtn) {
-        confirmBtn.disabled = selectedIndices.size === 0 || !consentConfirmed;
-      }
-    };
-
-    let itemsHtml = '';
-    candidates.forEach((cand, idx) => {
-      const isChecked = selectedIndices.has(idx) ? 'checked' : '';
-      const dupBadge = cand.is_duplicate
-        ? (cand.duplicate_scope === 'agency'
-            ? `<span class="ai-dup-badge agency" title="${escapeHtml(cand.duplicate_message || '')}">⚠️ In Agency Pool</span>`
-            : `<span class="ai-dup-badge global" title="${escapeHtml(cand.duplicate_message || '')}">⛔ Platform Duplicate</span>`)
-        : '';
-      const missingBadge = cand.missing_fields && cand.missing_fields.length > 0
-        ? `<span class="ai-warn-badge">Missing: ${escapeHtml(cand.missing_fields.join(', '))}</span>`
-        : '';
-      const validBadge = cand.is_valid && !cand.is_duplicate
-        ? `<span class="ai-valid-badge">✓ Ready</span>`
-        : '';
-
-      const skillsFormatted = Array.isArray(cand.skills) ? cand.skills.join(', ') : (cand.skills || '');
-
-      itemsHtml += `
-        <div class="ai-candidate-item" data-idx="${idx}">
-          <div class="ai-candidate-item-header">
-            <label class="ai-candidate-select-label">
-              <input type="checkbox" class="ai-cand-chk" data-idx="${idx}" ${isChecked} />
-              <strong class="ai-cand-title">Candidate #${idx + 1}</strong>
-            </label>
-            <div class="ai-cand-badges">
-              ${dupBadge}
-              ${missingBadge}
-              ${validBadge}
-            </div>
-          </div>
-          ${cand.duplicate_message ? `<div class="ai-cand-dup-note">${escapeHtml(cand.duplicate_message)}</div>` : ''}
-          <div class="ai-card-input-grid">
-            <div class="ai-input-group">
-              <label>First Name *</label>
-              <input type="text" class="ai-card-input" data-field="first_name" data-idx="${idx}" value="${escapeHtml(cand.first_name || '')}" placeholder="First Name" />
-            </div>
-            <div class="ai-input-group">
-              <label>Last Name *</label>
-              <input type="text" class="ai-card-input" data-field="last_name" data-idx="${idx}" value="${escapeHtml(cand.last_name || '')}" placeholder="Last Name" />
-            </div>
-            <div class="ai-input-group">
-              <label>Email *</label>
-              <input type="email" class="ai-card-input" data-field="email" data-idx="${idx}" value="${escapeHtml(cand.email || '')}" placeholder="Email" />
-            </div>
-            <div class="ai-input-group">
-              <label>Phone</label>
-              <input type="text" class="ai-card-input" data-field="phone" data-idx="${idx}" value="${escapeHtml(cand.phone || '')}" placeholder="Phone" />
-            </div>
-            <div class="ai-input-group">
-              <label>Job Title</label>
-              <input type="text" class="ai-card-input" data-field="job_title" data-idx="${idx}" value="${escapeHtml(cand.job_title || '')}" placeholder="e.g. Developer" />
-            </div>
-            <div class="ai-input-group">
-              <label>Location</label>
-              <input type="text" class="ai-card-input" data-field="current_location" data-idx="${idx}" value="${escapeHtml(cand.current_location || '')}" placeholder="Location" />
-            </div>
-            <div class="ai-input-group full-width">
-              <label>Skills</label>
-              <input type="text" class="ai-card-input" data-field="skills" data-idx="${idx}" value="${escapeHtml(skillsFormatted)}" placeholder="e.g. React, Node.js" />
-            </div>
-          </div>
-        </div>
-      `;
-    });
-
-    card.innerHTML = `
-      <div class="ai-review-header">
-        <span class="ai-action-badge">Candidate Review</span>
-        <span class="ai-action-title">${escapeHtml(filename)} (${candidates.length} parsed)</span>
-      </div>
-      <p class="ai-review-instructions">
-        Review candidate details below. You can correct information, review duplicates, and select candidates to add to your agency pool.
-      </p>
-      <div class="ai-candidate-list-scroll">
-        ${itemsHtml}
-      </div>
-      <div class="ai-review-footer">
-        <label class="ai-consent-row">
-          <input type="checkbox" class="ai-consent-checkbox" checked />
-          <span>I confirm candidate consent has been obtained for represented candidates.</span>
-        </label>
-        <div class="ai-selection-summary">
-          Selected: <strong class="ai-sel-count">${selectedIndices.size}</strong> of ${candidates.length} candidate(s)
-        </div>
-        <div class="ai-review-status-msg" style="display: none;"></div>
-        <div class="ai-review-controls">
-          <button type="button" class="ai-btn-confirm-candidates" ${selectedIndices.size === 0 ? 'disabled' : ''}>Confirm &amp; Create Selected</button>
-          <button type="button" class="ai-btn-cancel-candidates">Cancel</button>
-        </div>
-      </div>
-    `;
-
-    card.querySelectorAll('.ai-cand-chk').forEach(chk => {
-      chk.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.getAttribute('data-idx'), 10);
-        if (e.target.checked) {
-          selectedIndices.add(idx);
-        } else {
-          selectedIndices.delete(idx);
-        }
-        updateSummary();
-      });
-    });
-
-    card.querySelectorAll('.ai-card-input').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const idx = parseInt(e.target.getAttribute('data-idx'), 10);
-        const field = e.target.getAttribute('data-field');
-        const val = e.target.value.trim();
-        if (candidates[idx]) {
-          if (field === 'skills') {
-            candidates[idx].skills = val.split(',').map(s => s.trim()).filter(Boolean);
-          } else {
-            candidates[idx][field] = val;
-          }
-        }
-      });
-    });
-
-    const consentChk = card.querySelector('.ai-consent-checkbox');
-    consentChk.addEventListener('change', (e) => {
-      consentConfirmed = e.target.checked;
-      updateSummary();
-    });
-
-    const btnConfirm = card.querySelector('.ai-btn-confirm-candidates');
-    const btnCancel = card.querySelector('.ai-btn-cancel-candidates');
-    const statusMsg = card.querySelector('.ai-review-status-msg');
-    const controls = card.querySelector('.ai-review-controls');
-
-    let executing = false;
-
-    btnConfirm.addEventListener('click', () => {
-      if (executing || selectedIndices.size === 0 || !consentConfirmed) return;
-      executing = true;
-      btnConfirm.disabled = true;
-      btnCancel.disabled = true;
-
-      const candidatesToCreate = [];
-      selectedIndices.forEach(idx => {
-        const c = candidates[idx];
-        if (c) {
-          candidatesToCreate.push({
-            first_name: c.first_name,
-            last_name: c.last_name,
-            email: c.email,
-            phone: c.phone || undefined,
-            current_location: c.current_location || undefined,
-            job_title: c.job_title || undefined,
-            professional_summary: c.professional_summary || undefined,
-            years_of_experience: c.years_of_experience,
-            skills: Array.isArray(c.skills) && c.skills.length > 0 ? c.skills : ['General'],
-            education: c.education || [],
-            work_experience: c.work_experience || [],
-            certifications: c.certifications || [],
-            candidate_consent: true,
-            exclusivity_agreement: false
-          });
-        }
-      });
-
-      statusMsg.style.display = 'flex';
-      statusMsg.className = 'ai-action-status-msg executing';
-      statusMsg.innerHTML = `Creating ${candidatesToCreate.length} candidate(s) in your pool...`;
-
-      this.events.emit('action:execute', {
-        action: 'consultancy:create_candidates_batch',
-        parameters: { candidates: candidatesToCreate },
-        resolve: (result) => {
-          executing = false;
-          statusMsg.style.display = 'flex';
-          statusMsg.className = 'ai-action-status-msg success';
-          statusMsg.innerHTML = `${ICONS.check} ${escapeHtml(result?.message || 'Candidates created successfully!')}`;
-          controls.style.display = 'none';
-          this._scrollToBottom();
-        },
-        reject: (err) => {
-          executing = false;
-          statusMsg.style.display = 'flex';
-          statusMsg.className = 'ai-action-status-msg error';
-          statusMsg.innerHTML = `⚠️ ${escapeHtml(err?.message || 'Creation failed')}`;
-          btnConfirm.disabled = false;
-          btnCancel.disabled = false;
-          this._scrollToBottom();
-        }
-      });
-    });
-
-    btnCancel.addEventListener('click', () => {
-      if (executing) return;
-      controls.style.display = 'none';
-      statusMsg.style.display = 'flex';
-      statusMsg.className = 'ai-action-status-msg cancelled';
-      statusMsg.textContent = 'Candidate creation cancelled.';
+    cancelButton.addEventListener('click', () => {
+      bubble.innerHTML = '<p class="ai-document-cancelled">Document processing cancelled. The file was not sent.</p>';
+      this.events.emit('document:consent-rejected', { filename });
       this._scrollToBottom();
     });
+  }
 
-    bubble.appendChild(card);
+  _processFileUpload(file, bubble, sizeFormatted, hasHostListener) {
+    const filename = typeof file.name === 'string' ? file.name : 'document';
+    const controller = new AbortController();
+    this.documentUploadController = controller;
+    const uploadMessage = `Uploaded document: ${filename} (${sizeFormatted})`;
+    this.messages.push({ role: 'user', content: uploadMessage });
+    this._renderMessageBubble('user', uploadMessage);
+    this._persistState();
+
+    bubble.innerHTML = `
+      <div class="ai-processing-state">
+        <span class="ai-spinner"></span>
+        <span>Processing <strong>${escapeHtml(filename)}</strong>...</span>
+        <button type="button" class="ai-btn-document-cancel">Cancel</button>
+      </div>
+    `;
+    const cancelButton = bubble.querySelector('.ai-btn-document-cancel');
+    cancelButton.addEventListener('click', () => controller.abort(), { once: true });
+
+    const showCancelled = () => {
+      bubble.innerHTML = '<p class="ai-document-cancelled">Document processing cancelled.</p>';
+      this.events.emit('document:cancelled', { filename });
+      if (this.documentUploadController === controller) this.documentUploadController = null;
+      this._scrollToBottom();
+    };
+    controller.signal.addEventListener('abort', showCancelled, { once: true });
+
+    if (hasHostListener) {
+      let handled = false;
+      const timeout = setTimeout(() => {
+        if (handled || controller.signal.aborted) return;
+        handled = true;
+        if (this.documentUploadController === controller) this.documentUploadController = null;
+        bubble.innerHTML = '<p class="ai-action-status-msg error">The host application did not complete document processing in time.</p>';
+        this._scrollToBottom();
+      }, 45000);
+
+      this.events.emit('file:upload', {
+        file,
+        filename,
+        fileSize: file.size,
+        fileType: file.type,
+        signal: controller.signal,
+        resolve: (result) => {
+          if (handled || controller.signal.aborted) return;
+          handled = true;
+          clearTimeout(timeout);
+          if (this.documentUploadController === controller) this.documentUploadController = null;
+          const message = typeof result?.message === 'string'
+            ? result.message
+            : 'The host application processed the document.';
+          bubble.innerHTML = `<p class="ai-document-host-result">${escapeHtml(message)}</p>`;
+          this.events.emit('document:host-processed', { filename, result });
+          this._scrollToBottom();
+        },
+        reject: (error) => {
+          if (handled || controller.signal.aborted) return;
+          handled = true;
+          clearTimeout(timeout);
+          if (this.documentUploadController === controller) this.documentUploadController = null;
+          bubble.innerHTML = `<p class="ai-action-status-msg error">${escapeHtml(error?.message || 'The host application could not process this document.')}</p>`;
+          this._scrollToBottom();
+        }
+      });
+      controller.signal.addEventListener('abort', () => clearTimeout(timeout), { once: true });
+      return;
+    }
+
+    this.apiClient.uploadDocument(file, this.activeConversationId, {
+      assistantId: this.config?.assistantId,
+      consentAccepted: true,
+      signal: controller.signal
+    }).then(async (data) => {
+      if (controller.signal.aborted) {
+        await this.apiClient.removeDocument(data.conversationId, data.document.id);
+        return;
+      }
+      if (data.conversationId && !this.activeConversationId) {
+        this.activeConversationId = data.conversationId;
+        this._persistState();
+      }
+      const doc = data.document;
+      const wordsCount = doc.wordCount || Math.round(doc.textLength / 5) || 0;
+      const pageInfo = doc.pageCount ? ` • ${doc.pageCount} page${doc.pageCount > 1 ? 's' : ''}` : '';
+      bubble.innerHTML = `
+        <div class="ai-doc-card">
+          <div class="ai-doc-header">
+            <div class="ai-doc-icon">📄</div>
+            <div class="ai-doc-details">
+              <div class="ai-doc-title">${escapeHtml(doc.filename)}</div>
+              <div class="ai-doc-meta">${escapeHtml(doc.fileType.toUpperCase())} • ${sizeFormatted}${pageInfo} • ${wordsCount} words</div>
+            </div>
+            <div class="ai-doc-badge">Ready for questions</div>
+          </div>
+          <p class="ai-doc-hint">You can ask questions about the extracted text. The text is temporary and limited to this conversation session.</p>
+          <button type="button" class="ai-btn-document-remove" aria-label="Remove ${escapeHtml(doc.filename)} from this conversation">Remove document</button>
+        </div>
+      `;
+      const knownDocuments = this.storage.get('documents', []);
+      this.storage.set('documents', [...knownDocuments.filter(item => item.id !== doc.id), doc]);
+      this.messages.push({ role: 'assistant', content: `Processed document: ${doc.filename}. Ready for questions.` });
+      this._persistState();
+      bubble.querySelector('.ai-btn-document-remove').addEventListener('click', async (event) => {
+        event.currentTarget.disabled = true;
+        try {
+          await this.apiClient.removeDocument(this.activeConversationId, doc.id);
+          const remaining = this.storage.get('documents', []).filter(item => item.id !== doc.id);
+          this.storage.set('documents', remaining);
+          bubble.innerHTML = '<p class="ai-document-cancelled">Document removed from this conversation.</p>';
+          this.events.emit('document:removed', doc);
+        } catch (error) {
+          event.currentTarget.disabled = false;
+          this._renderErrorBanner(error.message);
+          this.events.emit('error', error);
+        }
+        this._scrollToBottom();
+      });
+      this.events.emit('document:uploaded', doc);
+      this._scrollToBottom();
+    }).catch((error) => {
+      if (error.name === 'AbortError') return;
+      bubble.innerHTML = `<p class="ai-action-status-msg error">${escapeHtml(error?.message || 'Failed to process document')}</p>`;
+      this._scrollToBottom();
+    }).finally(() => {
+      controller.signal.removeEventListener('abort', showCancelled);
+      if (this.documentUploadController === controller) this.documentUploadController = null;
+    });
+  }
+
+  cancelDocumentUpload() {
+    this.documentUploadController?.abort();
+    this.documentUploadController = null;
   }
 
   _renderMessageBubble(role, content, animate = true, action = null) {
@@ -927,9 +848,31 @@ export class AssistantWidgetUI {
     this._scrollToBottom();
   }
 
+  async _assertDocumentContextAvailable() {
+    const knownDocuments = this.storage.get('documents', []);
+    if (!Array.isArray(knownDocuments) || knownDocuments.length === 0) return;
+    if (!this.activeConversationId) {
+      throw new Error('The previous document session is unavailable. Start a new conversation and upload the document again.');
+    }
+
+    const currentDocuments = await this.apiClient.getDocuments(this.activeConversationId);
+    const availableIds = new Set(currentDocuments.map(document => document.id));
+    if (knownDocuments.some(doc => !availableIds.has(doc.id))) {
+      throw new Error('Document context is no longer available for this conversation. Start a new conversation and upload the document again.');
+    }
+  }
+
   async sendMessage(text) {
     const trimmed = (text || '').trim();
     if (!trimmed || this.isGenerating) return;
+
+    try {
+      await this._assertDocumentContextAvailable();
+    } catch (error) {
+      this._renderErrorBanner(error.message);
+      this.events.emit('error', error);
+      return;
+    }
 
     // Reset textarea
     this.textarea.value = '';
@@ -952,10 +895,13 @@ export class AssistantWidgetUI {
     const stream = this.options.features?.streaming ?? true;
 
     try {
+      const context = this.options.integration && !this.contextOverrideSet
+        ? await this.options.integration.getContext()
+        : this.options.context;
       await this.apiClient.sendMessage({
         assistantId: this.options.assistantId || 'default',
         message: trimmed,
-        context: (typeof this.options.context === 'string' && this.options.context.trim().length > 0) ? this.options.context.trim() : undefined,
+        context: typeof context === 'string' && context.trim().length > 0 ? context.trim() : undefined,
         conversationId: (typeof this.activeConversationId === 'string' && this.activeConversationId.trim().length > 0) ? this.activeConversationId.trim() : undefined,
         history: this.messages.slice(0, -1),
         stream,

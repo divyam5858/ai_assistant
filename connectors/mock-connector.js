@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { BaseConnector } from './base.js';
 
 /**
@@ -46,12 +47,62 @@ export class MockConnector extends BaseConnector {
   }
 
   /**
+   * Return structured action definitions for chat discovery
+   * @returns {Array<object>}
+   */
+  getActionDefinitions() {
+    return [
+      {
+        name: `${this.id}:searchKnowledge`,
+        title: 'Search Knowledge Base',
+        description: 'Searches documentation, guides, and articles in the knowledge base.',
+        parameters: {
+          query: '<search keywords or topic>'
+        },
+        parameterSchema: z.object({
+          query: z.string().optional().default('')
+        }),
+        promptGuideline: 'When the user asks to search documentation, help articles, or knowledge base guides.\n   Parameters: { "query": "<search keywords>" }',
+        promptable: true,
+        requiresConfirmation: false,
+        risk: 'read',
+        metadata: {
+          connectorId: this.id,
+          connectorAction: 'searchKnowledge',
+          isProtected: false
+        }
+      },
+      {
+        name: `${this.id}:getCustomerProfile`,
+        title: 'Get Customer Profile',
+        description: 'Retrieves customer account profile from CRM (requires authorized credentials).',
+        parameters: {
+          customerId: '<customer ID, e.g. cust-001>'
+        },
+        parameterSchema: z.object({
+          customerId: z.string().min(1, 'customerId is required')
+        }),
+        promptGuideline: 'When an authorized support agent asks for customer profile details by ID.\n   Parameters: { "customerId": "<customer ID, e.g. cust-001>" }\n   CRITICAL: Never fabricate a customer ID.',
+        promptable: true,
+        requiresConfirmation: false,
+        risk: 'read',
+        metadata: {
+          connectorId: this.id,
+          connectorAction: 'getCustomerProfile',
+          isProtected: true
+        }
+      }
+    ];
+  }
+
+  /**
    * Validate mock authorization token server-side.
    * Public actions (like searching open articles) might not need a token.
    * Protected actions (like reading customer profiles) require a valid token.
    */
   async validateAuthorization(authToken, context = {}) {
-    const { action } = context;
+    const rawAction = context?.action || '';
+    const action = rawAction.includes(':') ? rawAction.split(':')[1] : rawAction;
 
     // Open/public action
     if (action === 'searchKnowledge') {
@@ -76,7 +127,8 @@ export class MockConnector extends BaseConnector {
    * Execute connector action
    */
   async execute(action, parameters = {}, authContext = {}) {
-    switch (action) {
+    const normalizedAction = action.includes(':') ? action.split(':')[1] : action;
+    switch (normalizedAction) {
       case 'searchKnowledge': {
         const query = (parameters.query || '').toLowerCase().trim();
         if (!query) {

@@ -8,6 +8,7 @@ export class MockAIProvider extends BaseAIProvider {
     super('mock');
     this.model = options.model || 'mock-model-v1';
     this.delayMs = options.delayMs ?? 10;
+    this.mockToolCalls = options.mockToolCalls || null;
   }
 
   async checkHealth() {
@@ -18,7 +19,7 @@ export class MockAIProvider extends BaseAIProvider {
     };
   }
 
-  async chat({ messages, systemInstruction, temperature, maxTokens, signal }) {
+  async chat({ messages, systemInstruction, tools, temperature, maxTokens, signal }) {
     if (signal?.aborted) {
       const err = new Error('Request was aborted');
       err.statusCode = 499;
@@ -33,11 +34,54 @@ export class MockAIProvider extends BaseAIProvider {
 
     this.lastSystemInstruction = systemInstruction || null;
     this.lastMessages = messages;
+    this.lastTools = tools || null;
 
     // Echo instruction hook for context testing
     if (lastMessage.includes('ECHO_SYSTEM_INSTRUCTION')) {
       return {
         text: systemInstruction || '[NO_SYSTEM_INSTRUCTION]',
+        model: this.model,
+        finishReason: 'STOP'
+      };
+    }
+
+    // Native tool call simulation hooks
+    if (this.mockToolCalls) {
+      const toolCalls = Array.isArray(this.mockToolCalls) ? this.mockToolCalls : [this.mockToolCalls];
+      this.mockToolCalls = null; // consume
+      return {
+        text: 'Executing requested tool...',
+        toolCalls,
+        model: this.model,
+        finishReason: 'tool_calls'
+      };
+    }
+
+    if (lastMessage.startsWith('MOCK_TOOL_CALL:')) {
+      const jsonStr = lastMessage.slice('MOCK_TOOL_CALL:'.length).trim();
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+        return {
+          text: 'Executing tool call...',
+          toolCalls,
+          model: this.model,
+          finishReason: 'tool_calls'
+        };
+      } catch (err) {
+        return {
+          text: 'Failed to parse mock tool call JSON: ' + err.message,
+          model: this.model,
+          finishReason: 'STOP'
+        };
+      }
+    }
+
+    // Check if previous message was a tool result
+    const lastMsgObj = messages[messages.length - 1];
+    if (lastMsgObj?.role === 'tool') {
+      return {
+        text: `[Mock Synthesized] Based on the tool result: ${lastMsgObj.content}`,
         model: this.model,
         finishReason: 'STOP'
       };
@@ -49,6 +93,18 @@ export class MockAIProvider extends BaseAIProvider {
         model: this.model,
         finishReason: 'STOP'
       };
+    }
+
+    // Document Q&A simulation hook when document context is attached
+    if (systemInstruction && systemInstruction.includes('[UPLOADED DOCUMENTS CONTEXT]')) {
+      const lower = lastMessage.toLowerCase();
+      if (lower.includes('priya') || lower.includes('skills') || lower.includes('experience') || lower.includes('background') || lower.includes('education') || lower.includes('summar')) {
+        return {
+          text: `Based on the uploaded document for Priya Nair: She is a Frontend Developer based in Bengaluru, Karnataka with 1 year of experience at Demo Digital Labs. Her technical skills include JavaScript, React.js, HTML5, CSS3, Tailwind CSS, REST APIs, and Git. She holds a B.Sc. in Computer Science from Sample City College (2025).`,
+          model: this.model,
+          finishReason: 'STOP'
+        };
+      }
     }
 
     // Error simulation hook
@@ -70,7 +126,7 @@ export class MockAIProvider extends BaseAIProvider {
     };
   }
 
-  async chatStream({ messages, systemInstruction, onChunk, signal }) {
+  async chatStream({ messages, systemInstruction, tools, onChunk, signal }) {
     if (signal?.aborted) {
       const err = new Error('Request was aborted');
       err.statusCode = 499;
@@ -79,6 +135,7 @@ export class MockAIProvider extends BaseAIProvider {
 
     this.lastSystemInstruction = systemInstruction || null;
     this.lastMessages = messages;
+    this.lastTools = tools || null;
 
     const lastMessage = messages[messages.length - 1]?.content || '';
 
@@ -89,10 +146,39 @@ export class MockAIProvider extends BaseAIProvider {
       return { text, model: this.model };
     }
 
+    if (lastMessage.startsWith('MOCK_TOOL_CALL:')) {
+      const jsonStr = lastMessage.slice('MOCK_TOOL_CALL:'.length).trim();
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const toolCalls = Array.isArray(parsed) ? parsed : [parsed];
+        const text = 'Executing tool stream...';
+        if (onChunk) onChunk(text);
+        return {
+          text,
+          toolCalls,
+          model: this.model
+        };
+      } catch (err) {
+        const text = 'Failed to parse mock tool call: ' + err.message;
+        if (onChunk) onChunk(text);
+        return { text, model: this.model };
+      }
+    }
+
     if (lastMessage.startsWith('ECHO_RESPONSE:')) {
       const text = lastMessage.slice('ECHO_RESPONSE:'.length).trim();
       if (onChunk) onChunk(text);
       return { text, model: this.model };
+    }
+
+    // Document Q&A simulation hook when document context is attached
+    if (systemInstruction && systemInstruction.includes('[UPLOADED DOCUMENTS CONTEXT]')) {
+      const lower = lastMessage.toLowerCase();
+      if (lower.includes('priya') || lower.includes('skills') || lower.includes('experience') || lower.includes('background') || lower.includes('education') || lower.includes('summar')) {
+        const text = `Based on the uploaded document for Priya Nair: She is a Frontend Developer based in Bengaluru, Karnataka with 1 year of experience at Demo Digital Labs. Her technical skills include JavaScript, React.js, HTML5, CSS3, Tailwind CSS, REST APIs, and Git. She holds a B.Sc. in Computer Science from Sample City College (2025).`;
+        if (onChunk) onChunk(text);
+        return { text, model: this.model };
+      }
     }
 
     const words = `[Mock Stream] Response to: ${lastMessage}. Multi-token stream simulation is working.`.split(' ');

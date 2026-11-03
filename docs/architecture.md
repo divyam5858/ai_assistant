@@ -66,7 +66,7 @@ A primary architectural decision was selecting the isolation technique for embed
 | **Theme & CSS Variable Inheritance** | **Flexible**: Host applications can cleanly customize themes using CSS variables (e.g. `--ai-primary`) or data attributes. | Rigid: Requires postMessage communication or URL query params to pass style configurations. |
 | **Accessibility & Screen Readers** | **Seamless**: Widget DOM nodes reside directly in the document accessibility tree. Screen readers natively read ARIA live regions and dialog semantics. | Fragmented: Screen readers struggle with nested iframe boundaries and focus trapping across frame contexts. |
 | **Responsive Positioning & Mobile UX** | **Optimal**: Floating launcher and full-height mobile bottom sheet adapt without iframe sizing quirks or window resize listeners. | Cumbersome: Iframes cannot dynamically expand/contract without cross-origin postMessage handshake scripts in the host. |
-| **Performance & Footprint** | **Instant**: Single lightweight script bundle (~35KB minified), zero extra HTTP requests or iframe loading overhead. | Heavy: Each iframe instance boots an entirely separate browsing context, DOM window, and script execution engine. |
+| **Performance & Footprint** | **Instant**: Single script bundle (about 68 KB minified in the current build), zero extra HTTP requests or iframe loading overhead. | Heavy: Each iframe instance boots an entirely separate browsing context, DOM window, and script execution engine. |
 
 ### Decision Summary
 **Shadow DOM (`attachShadow({ mode: 'open' })`) was selected** because it guarantees 100% CSS encapsulation while maintaining first-class accessibility, effortless keyboard focus trapping, dynamic sizing, and zero layout shift.
@@ -113,4 +113,3 @@ Streaming responses utilize standard Server-Sent Events (SSE) over HTTP `POST /a
 - Stream packets formatted as standard event chunks: `data: {"type":"chunk","delta":"..."}\n\n`.
 - Handles connection cancellation via `req.on('close')`, aborting upstream AI requests immediately to preserve provider quota.
 - Includes `X-Accel-Buffering: no` and `Cache-Control: no-cache, no-transform` headers to prevent reverse proxies (e.g. Nginx, Cloudflare) from buffering chunks.
-

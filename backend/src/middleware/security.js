@@ -5,82 +5,26 @@ import rateLimit from 'express-rate-limit';
 import { SERVER_DEFAULTS } from '../../../config/defaults.js';
 
 /**
- * Configure CORS middleware
- *
- * Supports:
- * ALLOWED_ORIGINS=*
- * ALLOWED_ORIGINS=https://example.com
- * ALLOWED_ORIGINS=https://example.com,https://another-example.com
- *
- * If ALLOWED_ORIGINS is not configured, SERVER_DEFAULTS.ALLOWED_ORIGINS
- * will be used.
+ * The SDK API is public to browser origins. CORS permits cross-origin transport;
+ * authentication and authorization remain enforced by the API routes.
  */
 export function configureCors() {
-  const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
-
-  let allowedOrigins = SERVER_DEFAULTS.ALLOWED_ORIGINS;
-
-  if (allowedOriginsEnv && allowedOriginsEnv.trim() !== '') {
-    const normalizedOrigins = allowedOriginsEnv.trim();
-
-    if (normalizedOrigins === '*') {
-      // Explicitly allow all origins
-      allowedOrigins = ['*'];
-    } else {
-      // Allow specific comma-separated origins
-      allowedOrigins = normalizedOrigins
-        .split(',')
-        .map(origin => origin.trim())
-        .filter(Boolean);
-    }
-  }
-
   return cors({
-    origin: (origin, callback) => {
-      // Allow requests without an Origin header
-      // (mobile apps, curl, server-to-server requests)
-      if (!origin) {
-        return callback(null, true);
-      }
+    origin: '*',
 
-      // Allow all origins when wildcard is configured
-      if (allowedOrigins.includes('*')) {
-        return callback(null, true);
-      }
-
-      // Allow explicitly configured origins
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      // Always permit portfolio domain and preview deployments
-      if (
-        origin === 'https://divyashree-mallarapu.netlify.app' ||
-        origin.endsWith('.netlify.app')
-      ) {
-        return callback(null, true);
-      }
-
-      // Reject origins not included in the configuration
-      const err = new Error(
-        `CORS policy does not allow access from origin: ${origin}`
-      );
-
-      err.statusCode = 403;
-
-      return callback(err);
-    },
-
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
     allowedHeaders: [
       'Content-Type',
       'Authorization',
+      'X-API-Key',
       'X-Assistant-Id',
-      'X-Session-Id'
+      'X-Session-Id',
+      'X-Document-Processing-Consent',
+      'X-Document-Consent-Version'
     ],
 
-    credentials: true,
+    credentials: false,
 
     maxAge: 86400
   });

@@ -5,7 +5,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![AI Provider](https://img.shields.io/badge/provider-Google%20Gemini-orange.svg)
-![Tests](https://img.shields.io/badge/tests-43%20passed-success.svg)
+![Tests](https://img.shields.io/badge/tests-automated-success.svg)
 
 ---
 
@@ -55,7 +55,7 @@ d:\ai-assistant-plugin\
 │   ├── configuration.md      # Configuration guide and persona customization
 │   ├── security.md           # Security, secret management, prompt injection defenses
 │   └── deployment.md         # Production deployment, Nginx proxy, Dockerfile
-├── tests/                    # Automated test suites (43 tests, 100% pass)
+├── tests/                    # Automated unit and integration test suites
 │   ├── config.test.js        # Schema validation unit tests
 │   ├── session-manager.test.js # Session lifecycle and context window tests
 │   ├── markdown.test.js      # XSS escaping and markdown parsing unit tests
@@ -142,23 +142,27 @@ AssistantSDK.open();
 AssistantSDK.sendMessage('Please summarize key points from this meeting.');
 ```
 
+### Level 3 Host Integration
+
+The SDK supports a versioned host adapter for live page context, host-provided request headers, permission UX, and confirmed host actions. Register application actions on the backend and enforce final authorization in the host API; browser callbacks are not a security boundary. See [the Level 3 integration guide](SDK_LEVEL3_INTEGRATION_GUIDE.md), [document/session flow](SDK_DOCUMENT_QA_AND_SESSION_FLOW.md), and [integration security model](SDK_INTEGRATION_SECURITY_MODEL.md).
+
+## Audit and Integration Reports
+
+- [Complete architecture and integration audit](SDK_COMPLETE_ARCHITECTURE_AND_INTEGRATION_AUDIT.md)
+- [Complete audit, fixes, and Level 3 integration report](SDK_COMPLETE_AUDIT_FIX_AND_LEVEL3_INTEGRATION_REPORT.md)
+
 ---
 
 ## Running Automated Tests
 
-Run the full automated test suite:
+Run the deterministic, offline suite:
 ```bash
-node --env-file=backend/.env --test tests/**/*.test.js
+npm run test:mock
 ```
 
-All 43 tests pass, covering:
-- Zod schema validation
-- In-memory context windows & TTL expiration
-- XSS prevention & Markdown parsing
-- Connector authorization enforcement
-- Secret protection & origin validation
-- REST endpoints and SSE streaming
-- Live Gemini API chat, streaming, and summarization
+This suite uses mock providers and covers the SDK, integration adapters, document consent/parsing, session lifecycle, authentication, and action registration. `npm test` also includes the conditional live Gemini test; it requires valid provider credentials and an available service.
+
+Build the distributable widget with `npm run build`.
 
 ---
 
@@ -171,4 +175,3 @@ All 43 tests pass, covering:
 - [Configuration & Personas](docs/configuration.md)
 - [Security & Privacy](docs/security.md)
 - [Production Deployment](docs/deployment.md)
-
