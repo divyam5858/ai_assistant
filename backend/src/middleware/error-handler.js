@@ -1,4 +1,5 @@
 import { ZodError } from 'zod';
+import { logRequestError } from './logger.js';
 
 /**
  * Global error handler middleware
@@ -6,6 +7,10 @@ import { ZodError } from 'zod';
  */
 export function errorHandler(err, req, res, next) {
   const statusCode = err.statusCode || (err instanceof ZodError ? 400 : 500);
+
+  if (statusCode >= 500) {
+    logRequestError(err, req);
+  }
 
   // Zod validation error formatting
   if (err instanceof ZodError) {

@@ -47,11 +47,27 @@ export function createApp() {
   // Path normalizer for serverless environments (e.g. Vercel rewrites)
   app.use((req, res, next) => {
     const matched = req.headers['x-matched-path'] || req.headers['x-vercel-matched-path'];
-    if (matched && matched.startsWith('/api')) {
-      req.url = matched;
-    } else if (req.query && req.query.path) {
-      const subpath = Array.isArray(req.query.path) ? req.query.path.join('/') : req.query.path;
-      req.url = '/api/' + subpath;
+    const pathIsCatchAll = typeof matched === 'string' && /\[[^/]+\]/.test(matched);
+    const parsedUrl = new URL(req.url || '/', 'http://localhost');
+    const queryPaths = parsedUrl.searchParams.getAll('path');
+    const subpath = queryPaths.length > 1 ? queryPaths.join('/') : queryPaths[0];
+    const rewriteRequestUrl = url => {
+      req.url = url;
+      req._parsedUrl = undefined;
+      const rewrittenUrl = new URL(url, 'http://localhost');
+      req.normalizedPath = rewrittenUrl.pathname;
+      req.query = app.get('query parser fn')(rewrittenUrl.search.slice(1));
+    };
+
+    if (subpath && (!matched || pathIsCatchAll)) {
+      parsedUrl.searchParams.delete('path');
+      rewriteRequestUrl(`/api/${String(subpath).replace(/^\/+/, '')}${parsedUrl.search}`);
+    } else if (matched && matched.startsWith('/api') && !pathIsCatchAll) {
+      const matchedUrl = new URL(matched, 'http://localhost');
+      if (!matchedUrl.search) {
+        matchedUrl.search = parsedUrl.search;
+      }
+      rewriteRequestUrl(`${matchedUrl.pathname}${matchedUrl.search}`);
     }
     next();
   });

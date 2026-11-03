@@ -8,6 +8,7 @@ import { actionRegistry, hasActionPermissions } from '../actions/registry.js';
 import { getAssistantActionRegistry, dispatchActionProposal } from '../../../connectors/bridge.js';
 import { registryToOpenAITools } from '../actions/tool-converter.js';
 import { authenticate } from '../middleware/auth.js';
+import { logRequestError, sanitizeErrorMessage } from '../middleware/logger.js';
 
 export const chatRouter = Router();
 
@@ -391,7 +392,7 @@ async function processActionOrToolCalls({
  */
 chatRouter.post('/', async (req, res, next) => {
   const abortController = new AbortController();
-  req.on('close', () => {
+  res.on('close', () => {
     if (!res.writableEnded) {
       abortController.abort();
     }
@@ -470,9 +471,11 @@ chatRouter.post('/stream', async (req, res, next) => {
   const abortController = new AbortController();
   let clientDisconnected = false;
 
-  req.on('close', () => {
-    clientDisconnected = true;
-    abortController.abort();
+  res.on('close', () => {
+    if (!res.writableEnded) {
+      clientDisconnected = true;
+      abortController.abort();
+    }
   });
 
   try {
@@ -584,11 +587,15 @@ chatRouter.post('/stream', async (req, res, next) => {
     }
     // If headers were already sent, stream the error event
     if (res.headersSent) {
+      logRequestError(err, req);
+      const statusCode = err.statusCode || 500;
       res.write(`data: ${JSON.stringify({
         type: 'error',
         error: {
-          code: err.code || 'STREAM_ERROR',
-          message: err.message || 'Error occurred while streaming response'
+          code: statusCode >= 500 ? 'STREAM_ERROR' : (err.code || 'STREAM_ERROR'),
+          message: process.env.NODE_ENV === 'production' && statusCode >= 500
+            ? 'An internal server error occurred. Please try again later.'
+            : sanitizeErrorMessage(err)
         }
       })}\n\n`);
       res.end();
