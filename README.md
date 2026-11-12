@@ -19,6 +19,7 @@
 - **Configurable Personas & Themes**: Built-in personas (`default`, `researcher`, `support`, `coder`) with customizable light, dark, and auto themes.
 - **Full Accessibility**: ARIA roles, semantic landmarks, tab order, focus restoration, and keyboard shortcuts (Enter to send, Shift+Enter for newline, Esc to close).
 - **Extensible Connector Architecture**: Documented connector contract for querying external enterprise data and CRM records with server-side authorization.
+- **Opt-in OpenAPI API Tools**: Server-registered integrations can expose allowlisted GET operations and JSON POST/PUT operations; writes are staged for explicit confirmation before execution.
 
 ---
 
@@ -95,7 +96,7 @@ Copy-Item .env.example backend/.env
 ```ini
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-3.5-flash
-PORT=3000
+PORT=3100
 ```
 
 ### 3. Build Widget SDK
@@ -109,9 +110,11 @@ npm start
 ```
 
 Visit:
-- **Interactive Demo**: [http://localhost:3000/demo](http://localhost:3000/demo)
-- **Health Check**: [http://localhost:3000/api/health](http://localhost:3000/api/health)
-- **Compiled SDK Script**: [http://localhost:3000/sdk/assistant.js](http://localhost:3000/sdk/assistant.js)
+- **Interactive Demo**: [http://localhost:3100/demo](http://localhost:3100/demo)
+- **Health Check**: [http://localhost:3100/api/health](http://localhost:3100/api/health)
+- **Compiled SDK Script**: [http://localhost:3100/sdk/assistant.js](http://localhost:3100/sdk/assistant.js)
+
+Dynamic API discovery is disabled by default and is available only in non-production environments. See [the server-side integration guide](./docs/dynamic-api-discovery.md) before enabling it.
 
 ---
 
@@ -120,7 +123,7 @@ Visit:
 ### Option A: Zero-Code Script Tag
 ```html
 <script
-  src="http://localhost:3000/sdk/assistant.js"
+  src="http://localhost:3100/sdk/assistant.js"
   data-assistant-id="default"
   data-theme="auto"
   data-position="bottom-right"

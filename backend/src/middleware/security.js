@@ -3,14 +3,49 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { SERVER_DEFAULTS } from '../../../config/defaults.js';
+import { HIREPOOL_LOCAL_EXTENSION_ORIGIN } from '../../../extension/hirepool/site-policy.js';
 
 /**
  * The SDK API is public to browser origins. CORS permits cross-origin transport;
  * authentication and authorization remain enforced by the API routes.
  */
 export function configureCors() {
+  const allowedOrigins = new Set();
+  for (const origin of String(process.env.CORS_ALLOWED_ORIGINS || '')
+    .split(',')
+    .map(value => value.trim())
+    .filter(Boolean)) {
+    let parsed;
+    try {
+      parsed = new URL(origin);
+    } catch {
+      throw new Error('CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins or the pinned local extension origin');
+    }
+    const isLocalHirePoolExtension =
+      origin === HIREPOOL_LOCAL_EXTENSION_ORIGIN &&
+      process.env.NODE_ENV === 'development' &&
+      process.env.VERCEL_ENV !== 'production';
+    if (
+      (!['http:', 'https:'].includes(parsed.protocol) && !isLocalHirePoolExtension) ||
+      parsed.username ||
+      parsed.password ||
+      (parsed.pathname !== '/' && !(isLocalHirePoolExtension && parsed.pathname === '')) ||
+      parsed.search ||
+      parsed.hash ||
+      (isLocalHirePoolExtension ? origin !== HIREPOOL_LOCAL_EXTENSION_ORIGIN : parsed.origin !== origin)
+    ) {
+      throw new Error('CORS_ALLOWED_ORIGINS must contain exact HTTP(S) origins or the pinned local extension origin');
+    }
+    allowedOrigins.add(origin);
+  }
   return cors({
-    origin: '*',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) return callback(null, true);
+      if (process.env.NODE_ENV !== 'production' && allowedOrigins.size === 0) {
+        return callback(null, true);
+      }
+      return callback(null, false);
+    },
 
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 

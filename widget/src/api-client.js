@@ -72,6 +72,24 @@ export class AssistantApiClient {
     this._demoToken = null;
     this._demoTokenExpiresAt = 0;
     this._tokenFetchPromise = null;
+    this._authenticatedSession = null;
+  }
+
+  setAuthenticatedSession(session) {
+    this._authenticatedSession = session && typeof session === 'object' ? session : null;
+  }
+
+  getAuthenticatedSession() {
+    return this._authenticatedSession;
+  }
+
+  clearAuthenticatedSession() {
+    this._authenticatedSession = null;
+  }
+
+  clearDemoToken() {
+    this._demoToken = null;
+    this._demoTokenExpiresAt = 0;
   }
 
   /**
@@ -121,8 +139,13 @@ export class AssistantApiClient {
 
   async _headers(json = false) {
     let headers = {};
-    if (this.getAuthHeaders) {
+    if (this._authenticatedSession?.credential) {
+      headers = { Authorization: `Bearer ${this._authenticatedSession.credential}` };
+    } else if (this.getAuthHeaders) {
       headers = (await this.getAuthHeaders()) || {};
+      if (!headers.Authorization && this._authenticatedSession?.credential) {
+        headers.Authorization = `Bearer ${this._authenticatedSession.credential}`;
+      }
     } else {
       const token = await this._getOrFetchDemoToken();
       if (token) {
@@ -130,6 +153,59 @@ export class AssistantApiClient {
       }
     }
     return json ? { ...headers, 'Content-Type': 'application/json' } : headers;
+  }
+
+  async _hirePoolResumeRequest(path, { method, body, json = false } = {}) {
+    const response = await fetch(`${this.baseUrl}/api/hirepool/resume/${path}`, {
+      method,
+      headers: await this._headers(json),
+      body,
+      credentials: this.credentials,
+      cache: 'no-store'
+    });
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {
+      // The caller validates the response envelope and reports a safe error.
+    }
+    if (!response.ok) {
+      const error = new Error(
+        typeof result?.error?.message === 'string'
+          ? result.error.message
+          : `Resume upload request failed (HTTP ${response.status}).`
+      );
+      error.status = response.status;
+      error.responseStatus = result?.status;
+      error.code = result?.error?.code;
+      throw error;
+    }
+    return result;
+  }
+
+  async prepareHirePoolResume(file, conversationId) {
+    const body = new FormData();
+    body.append('file', file, file.name);
+    if (typeof conversationId === 'string' && conversationId) {
+      body.append('conversationId', conversationId);
+    }
+    return this._hirePoolResumeRequest('prepare', { method: 'POST', body });
+  }
+
+  async confirmHirePoolResume(confirmationToken, conversationId) {
+    return this._hirePoolResumeRequest('confirm', {
+      method: 'POST',
+      body: JSON.stringify({ confirmationToken, conversationId }),
+      json: true
+    });
+  }
+
+  async cancelHirePoolResume(confirmationToken, conversationId) {
+    return this._hirePoolResumeRequest('cancel', {
+      method: 'POST',
+      body: JSON.stringify({ confirmationToken, conversationId }),
+      json: true
+    });
   }
 
   /**
@@ -191,9 +267,11 @@ export class AssistantApiClient {
 
       if (!response.ok) {
         let errMsg = `Server returned HTTP ${response.status}`;
+        let errCode = null;
         try {
           const errData = await response.json();
           if (errData?.error) {
+            errCode = errData.error.code || null;
             if (Array.isArray(errData.error.details) && errData.error.details.length > 0) {
               const detailMsg = errData.error.details.map(d => `${d.field}: ${d.message}`).join(', ');
               errMsg = `${errData.error.message} (${detailMsg})`;
@@ -204,6 +282,7 @@ export class AssistantApiClient {
         } catch {}
         const error = new Error(errMsg);
         error.status = response.status;
+        error.code = errCode;
         throw error;
       }
 
@@ -235,8 +314,10 @@ export class AssistantApiClient {
           const result = {
             text: event.text || accumulatedText,
             action: event.action || actionProposal,
-            conversationId: event.conversationId || activeConversationId,
-            model: event.model
+            conversationId: event.logout?.loggedOut ? null : (event.conversationId || activeConversationId),
+            model: event.model,
+            logout: event.logout || null,
+            connectorResult: event.connectorResult || null
           };
           if (onDone) onDone(result);
         } else if (event.type === 'error') {
@@ -251,8 +332,10 @@ export class AssistantApiClient {
       return {
         text: doneEvent.text || accumulatedText,
         action: doneEvent.action || actionProposal,
-        conversationId: doneEvent.conversationId || activeConversationId,
-        model: doneEvent.model
+        conversationId: doneEvent.logout?.loggedOut ? null : (doneEvent.conversationId || activeConversationId),
+        model: doneEvent.model,
+        logout: doneEvent.logout || null,
+        connectorResult: doneEvent.connectorResult || null
       };
     } catch (err) {
       if (err.name === 'AbortError') {
@@ -379,7 +462,8 @@ export class AssistantApiClient {
    */
   async getDocuments(conversationId) {
     if (!conversationId) return [];
-    const res = await fetch(`${this.baseUrl}/api/documents/${encodeURIComponent(conversationId)}`, {
+    const url = `${this.baseUrl}/api/documents/${encodeURIComponent(conversationId)}?assistantId=${encodeURIComponent(this.assistantId)}`;
+    const res = await fetch(url, {
       headers: await this._headers(),
       credentials: this.credentials
     });
@@ -398,7 +482,7 @@ export class AssistantApiClient {
   async removeDocument(conversationId, documentId) {
     if (!conversationId || !documentId) return;
     const res = await fetch(
-      `${this.baseUrl}/api/documents/${encodeURIComponent(conversationId)}/${encodeURIComponent(documentId)}`,
+      `${this.baseUrl}/api/documents/${encodeURIComponent(conversationId)}/${encodeURIComponent(documentId)}?assistantId=${encodeURIComponent(this.assistantId)}`,
       {
         method: 'DELETE',
         headers: await this._headers(),
@@ -423,7 +507,7 @@ export class AssistantApiClient {
     const res = await fetch(`${this.baseUrl}/api/sessions/clear`, {
       method: 'POST',
       headers: await this._headers(true),
-      body: JSON.stringify({ conversationId }),
+      body: JSON.stringify({ conversationId, assistantId: this.assistantId }),
       credentials: this.credentials
     });
     if (!res.ok) {
@@ -433,6 +517,182 @@ export class AssistantApiClient {
         if (data?.error?.message) message = data.error.message;
       } catch {}
       throw new Error(message);
+    }
+  }
+
+  async _hirePoolSignupRequest(path, { method = 'POST', body, json = true } = {}) {
+    const isGet = method === 'GET';
+    const headers = json ? { 'Content-Type': 'application/json' } : {};
+    const response = await fetch(`${this.baseUrl}/api/hirepool/signup/${path}`, {
+      method,
+      headers,
+      body: isGet ? undefined : (json && body ? JSON.stringify(body) : body),
+      credentials: this.credentials,
+      cache: 'no-store'
+    });
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {}
+    if (!response.ok) {
+      const error = new Error(
+        typeof result?.error?.message === 'string'
+          ? result.error.message
+          : `Signup request failed (HTTP ${response.status}).`
+      );
+      error.status = response.status;
+      error.code = result?.error?.code;
+      error.details = result?.error;
+      throw error;
+    }
+    return result;
+  }
+
+  async getSignupAgreement(role) {
+    return this._hirePoolSignupRequest(`agreement?role=${encodeURIComponent(role)}`, {
+      method: 'GET',
+      json: false
+    });
+  }
+
+  async signupRegister(data) {
+    return this._hirePoolSignupRequest('register', { body: data });
+  }
+
+  async resendSignupVerification(data) {
+    return this._hirePoolSignupRequest('resend-verification', { body: data });
+  }
+
+  async verifySignupEmail(data) {
+    return this._hirePoolSignupRequest('verify-email', { body: data });
+  }
+
+  async checkSignupVerificationStatus(signupToken) {
+    return this._hirePoolSignupRequest('check-verification', { body: { signupToken } });
+  }
+
+  async updateSignupProfile(data) {
+    return this._hirePoolSignupRequest('profile-update', { body: data });
+  }
+
+  async completeSignupProfile(data) {
+    return this._hirePoolSignupRequest('complete-profile', { body: data });
+  }
+
+  async cancelSignup(signupToken) {
+    return this._hirePoolSignupRequest('cancel', { body: { signupToken } });
+  }
+
+  async validateHirePoolSession(credential = null) {
+    const cred = credential || this._authenticatedSession?.credential;
+    if (!cred) throw new Error('No session credential to validate');
+    let response = await fetch(`${this.baseUrl}/api/hirepool/session/validate`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${cred}`,
+        Accept: 'application/json'
+      },
+      credentials: this.credentials,
+      cache: 'no-store'
+    });
+    if (response.status === 404) {
+      try {
+        const altResponse = await fetch(`${this.baseUrl}/api/hirepool/signup/validate`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${cred}`,
+            Accept: 'application/json'
+          },
+          credentials: this.credentials,
+          cache: 'no-store'
+        });
+        if (altResponse.ok || altResponse.status !== 404) {
+          response = altResponse;
+        }
+      } catch {}
+    }
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {}
+    if (!response.ok) {
+      const error = new Error(result?.error?.message || `Session validation failed (HTTP ${response.status})`);
+      error.status = response.status;
+      error.code = result?.error?.code;
+      throw error;
+    }
+    return result;
+  }
+
+  async confirmDynamicApiAction(confirmationToken) {
+    const response = await fetch(`${this.baseUrl}/api/dynamic-api/confirm`, {
+      method: 'POST',
+      headers: await this._headers(true),
+      body: JSON.stringify({ confirmationToken }),
+      credentials: this.credentials,
+      cache: 'no-store'
+    });
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {}
+    if (!response.ok) {
+      const error = new Error(result?.error?.message || `Dynamic API action failed (HTTP ${response.status})`);
+      error.status = response.status;
+      error.code = result?.error?.code;
+      throw error;
+    }
+    return result;
+  }
+
+  async cancelDynamicApiAction(confirmationToken) {
+    const response = await fetch(`${this.baseUrl}/api/dynamic-api/confirm/cancel`, {
+      method: 'POST',
+      headers: await this._headers(true),
+      body: JSON.stringify({ confirmationToken }),
+      credentials: this.credentials,
+      cache: 'no-store'
+    });
+    let result = null;
+    try {
+      result = await response.json();
+    } catch {}
+    if (!response.ok) {
+      const error = new Error(result?.error?.message || `Dynamic API cancellation failed (HTTP ${response.status})`);
+      error.status = response.status;
+      error.code = result?.error?.code;
+      throw error;
+    }
+    return result;
+  }
+
+  async logoutHirePoolSession(conversationId = null) {
+    const body = {};
+    if (typeof conversationId === 'string' && conversationId.trim()) {
+      body.conversationId = conversationId.trim();
+    }
+    try {
+      const response = await fetch(`${this.baseUrl}/api/hirepool/session/logout`, {
+        method: 'POST',
+        headers: await this._headers(true),
+        body: JSON.stringify(body),
+        credentials: this.credentials,
+        cache: 'no-store'
+      });
+      let result = null;
+      try {
+        result = await response.json();
+      } catch {}
+      if (!response.ok) {
+        const error = new Error(result?.error?.message || `Logout failed (HTTP ${response.status})`);
+        error.status = response.status;
+        error.code = result?.error?.code;
+        throw error;
+      }
+      return result;
+    } finally {
+      this.clearAuthenticatedSession();
+      this.clearDemoToken();
     }
   }
 }

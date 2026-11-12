@@ -46,7 +46,7 @@ export const ChatRequestSchema = z.object({
   message: z.string().trim().min(1, 'Message cannot be empty').max(10000, 'Message cannot exceed 10,000 characters'),
   context: z.string().trim().max(30000, 'Context exceeds 30,000 character limit').nullable().optional(),
   conversationId: z.string().max(64).nullable().optional(),
-  history: z.array(ChatMessageSchema).max(30).nullable().optional().default([]),
+  history: z.array(ChatMessageSchema).max(100, 'History exceeds 100 items limit').nullable().optional().default([]),
   stream: z.boolean().optional().default(false),
   connectorAuth: z.record(z.string()).optional().default({}),
   parameters: z.object({

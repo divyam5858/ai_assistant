@@ -40,11 +40,12 @@ Edit `backend/.env` with your settings:
 
 ```ini
 # Server Port & Host
-PORT=3000
+PORT=3100
 HOST=localhost
 NODE_ENV=development
 
-# Allowed CORS Origins (comma-separated list, or * for open development)
+# API CORS origins (comma-separated exact origins; production requires the host origin)
+CORS_ALLOWED_ORIGINS=
 
 # Google Gemini API Provider Configuration
 GEMINI_API_KEY=your_actual_gemini_api_key_here
@@ -98,10 +99,10 @@ Upon startup, the console displays:
 ```text
 =======================================================
  AI Assistant Backend & SDK Server running!
- Server URL:      http://localhost:3000
- Health Check:    http://localhost:3000/api/health
- Demo App:        http://localhost:3000/demo
- Embeddable SDK:  http://localhost:3000/sdk/assistant.js
+ Server URL:      http://localhost:3100
+ Health Check:    http://localhost:3100/api/health
+ Demo App:        http://localhost:3100/demo
+ Embeddable SDK:  http://localhost:3100/sdk/assistant.js
  Environment:     development
  AI Provider:     gemini (model: gemini-3.5-flash) - READY
 =======================================================
@@ -114,7 +115,7 @@ Upon startup, the console displays:
 Open your browser and navigate to:
 
 ```
-http://localhost:3000/demo
+http://localhost:3100/demo
 ```
 
 The demo application showcases:

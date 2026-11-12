@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import { SERVER_DEFAULTS } from '../../config/defaults.js';
+import { filterOutOfScopeMessages, summarizeEarlierHistory } from './history-manager.js';
 
 /**
  * Error thrown when an unauthorized user attempts to access a session owned by another user.
@@ -89,6 +90,13 @@ export class SessionManager {
   validateOwnership(session, options = {}) {
     if (!session) return;
 
+    const requestedAssistantId = options.assistantId || 'default';
+    const requestedApplicationId = options.applicationId || null;
+    if (session.assistantId !== requestedAssistantId ||
+        session.applicationId !== requestedApplicationId) {
+      throw new SessionOwnershipError('Access denied: conversation belongs to another application or assistant');
+    }
+
     if (session.tenantId && options.tenantId && session.tenantId !== options.tenantId) {
       throw new TenantMismatchError();
     }
@@ -123,6 +131,10 @@ export class SessionManager {
     const id = conversationId && typeof conversationId === 'string' && conversationId.trim()
       ? conversationId.trim()
       : randomUUID();
+    resolvedOptions = {
+      ...resolvedOptions,
+      assistantId: resolvedAssistantId
+    };
 
     const now = Date.now();
     this._cleanupExpiredSessionMarkers(now);
@@ -150,6 +162,7 @@ export class SessionManager {
     session = {
       id,
       assistantId: resolvedAssistantId,
+      applicationId: resolvedOptions.applicationId || null,
       userId: resolvedOptions.userId || null,
       tenantId: resolvedOptions.tenantId || null,
       messages: [],
@@ -171,17 +184,35 @@ export class SessionManager {
    * @param {object} [options]
    */
   addMessage(conversationId, role, content, options = {}) {
-    const session = this.getOrCreate(conversationId, 'default', options);
-    session.messages.push({
+    const session = this.getOrCreate(conversationId, options.assistantId || 'default', options);
+    const messageEntry = {
       role,
       content,
       timestamp: Date.now()
-    });
+    };
+    if (options.isOutOfScope !== undefined) {
+      messageEntry.isOutOfScope = options.isOutOfScope;
+    }
+    if (options.scope !== undefined) {
+      messageEntry.scope = options.scope;
+    }
+    if (options.domainCategory !== undefined) {
+      messageEntry.domainCategory = options.domainCategory;
+    }
+    session.messages.push(messageEntry);
     session.lastActiveAt = Date.now();
 
-    // Truncate to maximum context window
+    // Compact evicted turns into conversationSummary before slicing to maximum context window
     if (session.messages.length > this.maxContextMessages) {
-      // Retain the most recent messages
+      const overflowCount = session.messages.length - this.maxContextMessages;
+      const evicted = session.messages.slice(0, overflowCount);
+      const cleanEvicted = filterOutOfScopeMessages(evicted);
+      if (cleanEvicted.length > 0 || session.conversationSummary) {
+        session.conversationSummary = summarizeEarlierHistory(
+          cleanEvicted,
+          session.conversationSummary || ''
+        );
+      }
       session.messages = session.messages.slice(-this.maxContextMessages);
     }
 
@@ -210,7 +241,7 @@ export class SessionManager {
    * @param {object} [options]
    */
   setContext(conversationId, context, options = {}) {
-    const session = this.getOrCreate(conversationId, 'default', options);
+    const session = this.getOrCreate(conversationId, options.assistantId || 'default', options);
     session.context = (typeof context === 'string' && context.trim().length > 0)
       ? context.trim()
       : null;
@@ -231,6 +262,28 @@ export class SessionManager {
     return session?.context ?? null;
   }
 
+  setWorkflowState(conversationId, workflowState, options = {}) {
+    const session = this._getActiveSession(conversationId);
+    if (!session) return false;
+    this.validateOwnership(session, options);
+    session.hirePoolWorkflow = typeof workflowState === 'function'
+      ? workflowState(session.hirePoolWorkflow || null)
+      : workflowState;
+    session.lastActiveAt = Date.now();
+    return true;
+  }
+
+  setProfileEditState(conversationId, profileEditState, options = {}) {
+    const session = this._getActiveSession(conversationId);
+    if (!session) return false;
+    this.validateOwnership(session, options);
+    session.hirePoolProfileEdit = typeof profileEditState === 'function'
+      ? profileEditState(session.hirePoolProfileEdit || null)
+      : profileEditState;
+    session.lastActiveAt = Date.now();
+    return true;
+  }
+
   /**
    * Clear conversation history, documents, and context for a session while retaining the session ID
    * @param {string} conversationId
@@ -243,6 +296,12 @@ export class SessionManager {
       session.messages = [];
       session.documents = [];
       session.context = null;
+      session.conversationSummary = null;
+      session.hirePoolVisitor = null;
+      session.hirePoolWorkflow = null;
+      session.hirePoolProfileEdit = null;
+      session.hirePoolLoginOffered = false;
+      session.hirePoolAccountActionOffered = null;
       session.lastActiveAt = Date.now();
       return true;
     }
@@ -356,6 +415,24 @@ export class SessionManager {
       return this.sessions.delete(conversationId);
     }
     return false;
+  }
+
+  /**
+   * Remove all sessions owned by a specific authenticated user.
+   * @param {string} userId
+   * @param {string|null} [assistantId=null]
+   * @returns {number} Number of destroyed sessions
+   */
+  destroyByUser(userId, assistantId = null) {
+    if (!userId || typeof userId !== 'string') return 0;
+    let removed = 0;
+    for (const [id, session] of this.sessions.entries()) {
+      if (session.userId === userId && (!assistantId || session.assistantId === assistantId)) {
+        this.sessions.delete(id);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   /**

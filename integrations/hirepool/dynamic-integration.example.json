@@ -1,0 +1,85 @@
+{
+  "id": "hirepool-readonly",
+  "applicationId": "hirepool-app",
+  "assistantId": "hirepool",
+  "enabled": false,
+  "openApiSpecUrl": "https://api.example.invalid/api/openapi.json",
+  "apiBaseUrl": "https://api.example.invalid/api/v1/",
+  "allowedHosts": [
+    "api.example.invalid"
+  ],
+  "authenticationRequired": true,
+  "authenticationStrategy": "validated-caller-bearer",
+  "allowedOperationIds": [
+    "get_current_user_info_api_v1_auth_me_get",
+    "get_my_profile_api_v1_candidates_profile_get",
+    "search_jobs_api_v1_jobs_search_get",
+    "get_my_applications_api_v1_applications_my_applications_get",
+    "get_my_user_profile_api_v1_clients_me_get",
+    "get_dashboard_stats_api_v1_clients_dashboard_get",
+    "get_my_jobs_api_v1_jobs_my_jobs_get",
+    "get_my_user_profile_api_v1_consultancies_me_get",
+    "get_placement_stats_api_v1_consultancies_placements_stats_get"
+  ],
+  "roleOperationIds": {
+    "candidate": [
+      "get_current_user_info_api_v1_auth_me_get",
+      "get_my_profile_api_v1_candidates_profile_get",
+      "search_jobs_api_v1_jobs_search_get",
+      "get_my_applications_api_v1_applications_my_applications_get"
+    ],
+    "client": [
+      "get_my_user_profile_api_v1_clients_me_get",
+      "get_dashboard_stats_api_v1_clients_dashboard_get",
+      "get_my_jobs_api_v1_jobs_my_jobs_get"
+    ],
+    "consultancy": [
+      "get_my_user_profile_api_v1_consultancies_me_get",
+      "get_placement_stats_api_v1_consultancies_placements_stats_get"
+    ]
+  },
+  "responseFields": {
+    "get_current_user_info_api_v1_auth_me_get": [
+      "id",
+      "user_type"
+    ],
+    "get_my_profile_api_v1_candidates_profile_get": [
+      "id"
+    ],
+    "search_jobs_api_v1_jobs_search_get": [
+      "id",
+      "title",
+      "location"
+    ],
+    "get_my_applications_api_v1_applications_my_applications_get": [
+      "id",
+      "status"
+    ],
+    "get_my_user_profile_api_v1_clients_me_get": [
+      "id"
+    ],
+    "get_dashboard_stats_api_v1_clients_dashboard_get": [
+      "total_jobs",
+      "active_jobs"
+    ],
+    "get_my_jobs_api_v1_jobs_my_jobs_get": [
+      "id",
+      "title",
+      "status"
+    ],
+    "get_my_user_profile_api_v1_consultancies_me_get": [
+      "id"
+    ],
+    "get_placement_stats_api_v1_consultancies_placements_stats_get": [
+      "total_placements"
+    ]
+  },
+  "limits": {
+    "timeoutMs": 5000,
+    "maxSpecBytes": 1048576,
+    "maxResponseBytes": 65536,
+    "maxResultBytes": 16384
+  },
+  "authorize": "Implement as a server-only callback using identity validated against the trusted HirePool /auth/me endpoint; never trust browser or model roles.",
+  "getAuthHeaders": "Implement as a server-only callback that returns Authorization: Bearer <the validated caller access token>; never return or log refresh tokens."
+}

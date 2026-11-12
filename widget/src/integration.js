@@ -42,6 +42,9 @@ export class HostIntegrationAdapter {
     if (config.getAuthHeaders !== undefined && typeof config.getAuthHeaders !== 'function') {
       throw new TypeError('getAuthHeaders must be a function');
     }
+    if (config.getSessionScope !== undefined && typeof config.getSessionScope !== 'function') {
+      throw new TypeError('getSessionScope must be a function');
+    }
     if (config.canExecuteAction !== undefined && typeof config.canExecuteAction !== 'function') {
       throw new TypeError('canExecuteAction must be a function');
     }
@@ -64,6 +67,7 @@ export class HostIntegrationAdapter {
     };
     this.contextProvider = config.contextProvider;
     this.authHeadersProvider = config.getAuthHeaders;
+    this.sessionScopeProvider = config.getSessionScope;
     this.permissionAdapter = config.canExecuteAction;
     this.actionExecutor = config.executeAction;
     this.identityProvider = config.getIdentity;
@@ -109,6 +113,15 @@ export class HostIntegrationAdapter {
       normalized[name] = value;
     }
     return normalized;
+  }
+
+  async getSessionScope() {
+    const scope = this.sessionScopeProvider ? await this.sessionScopeProvider() : null;
+    if (scope === null || scope === undefined || scope === '') return null;
+    if (typeof scope !== 'string' || scope.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(scope)) {
+      throw new TypeError('getSessionScope must return a short opaque identifier or null');
+    }
+    return scope;
   }
 
   async getIdentity() {
@@ -157,7 +170,7 @@ export class HostIntegrationAdapter {
     this.errorListener?.(error);
   }
 
-  async executeHostAction(actionId, parameters) {
+  async executeHostAction(actionId, parameters, confirmationToken) {
     if (!this.actionExecutor) {
       throw new Error('No host action executor is configured');
     }
@@ -167,7 +180,8 @@ export class HostIntegrationAdapter {
     return this.actionExecutor({
       application: this.application,
       actionId,
-      parameters
+      parameters,
+      ...(confirmationToken ? { confirmationToken } : {})
     });
   }
 }

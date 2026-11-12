@@ -27,8 +27,7 @@ Defined in `backend/.env` on the server:
 | `AUTH_REQUIRED` | `false` in development; `true` in production | Require authentication on protected API routes. |
 | `JWT_SECRET` | unset | Server-only HS256 secret required for JWT authentication. |
 | `JWT_ISSUER` / `JWT_AUDIENCE` | unset | Optional required JWT issuer/audience claims. |
-
-The public SDK API permits any browser origin through wildcard CORS. No per-site CORS environment variable is required. Wildcard CORS does not allow cross-origin cookies; use bearer authorization or the API-key header mode for cross-origin clients.
+| `CORS_ALLOWED_ORIGINS` | empty | Comma-separated exact browser origins permitted by API CORS in production. Invalid entries fail startup. In non-production, an empty list retains permissive development behavior. |
 | `API_KEY` | unset | Server-only API key required for API-key or hybrid mode. |
 | `ENABLE_HIREPOOL_INTEGRATION` | `false` | Explicitly registers the SDK's HirePool read actions on the backend. |
 | `RATE_LIMIT_WINDOW_MS` | `60000` (1 min) | Rate limit sliding window duration in milliseconds. |

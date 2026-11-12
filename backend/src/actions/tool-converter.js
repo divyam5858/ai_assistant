@@ -43,6 +43,11 @@ export function decodeToolName(toolName) {
  * @returns {object} JSON Schema
  */
 export function parametersToJsonSchema(actionDef) {
+  const generatedSchema = actionDef?.metadata?.dynamicApi?.parameterJsonSchema;
+  if (generatedSchema && typeof generatedSchema === 'object') {
+    return JSON.parse(JSON.stringify(generatedSchema));
+  }
+
   const properties = {};
   const required = [];
 

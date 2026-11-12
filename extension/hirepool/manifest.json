@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "HirePool Local Assistant",
+  "version": "1.0.0",
+  "description": "Injects the local HirePool assistant on approved public website pages and securely resumes login continuations.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmbgePOas48dAkhUmTmIsX33pENZ0IwcoJZIdP4w0mdi7pOJ0JLiTnEAOwKMaqPo1hD2w8NtrltrmtpsXH+YAg4KhUiz9PBY74zQG+pFTFvQFIfeJBDGqFk3Zc/vjDgdKKgBTOphVhiUSIqGlcret9iQ1ZUPITaha3pmHpqXi7QP7eCJC76EzaaXLYCYFMUOBOml5PAGpYJtA3DuTlNMOHD1dHwTFsntraEtTrv6b7uWESytl8L5SZtkPWEEoOmoMjRHzB9X73CEQIDTr+mhvQo9dJpVnRA/+EEHFUglRwy+OuBfhrkwuUM6EBWoebvl2V2GYIm9jt8RcQXbJlUHHAQIDAQAB",
+  "permissions": [
+    "storage",
+    "scripting",
+    "webRequest",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "http://localhost:3000/*",
+    "http://127.0.0.1:3000/*",
+    "http://localhost:3001/*",
+    "http://127.0.0.1:3001/*",
+    "http://localhost:5173/*",
+    "http://localhost:8000/*",
+    "http://localhost:3100/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://localhost:3000/*",
+        "http://127.0.0.1:3000/*",
+        "http://localhost:3001/*",
+        "http://127.0.0.1:3001/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

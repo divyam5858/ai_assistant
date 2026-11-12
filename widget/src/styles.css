@@ -167,6 +167,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
   user-select: none;
 }
 
@@ -273,7 +274,9 @@
 /* Conversation Body */
 .ai-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -351,7 +354,14 @@
   display: flex;
   flex-direction: column;
   max-width: 88%;
+  min-width: 0;
   animation: fadeInMsg 0.2s ease;
+}
+
+.ai-message-row.ai-signup-row {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 @keyframes fadeInMsg {
@@ -586,6 +596,7 @@
   padding: 12px 14px;
   background: var(--ai-bg);
   border-top: 1px solid var(--ai-border);
+  flex-shrink: 0;
 }
 
 .ai-input-form {
@@ -701,9 +712,23 @@
   }
 }
 
+@media (max-width: 480px) {
+  .ai-body {
+    padding: 12px;
+  }
+
+  .ai-form-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Action Proposal Card */
 .ai-action-card {
   margin-top: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: var(--ai-surface);
   border: 1px solid var(--ai-border);
   border-radius: var(--ai-radius-sm);
@@ -827,8 +852,11 @@
 
 .ai-action-controls {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
+  width: 100%;
+  min-width: 0;
 }
 
 .ai-btn-action-confirm, .ai-btn-action-cancel {
@@ -839,6 +867,9 @@
   cursor: pointer;
   border: 1px solid transparent;
   transition: all 0.15s ease;
+  min-width: 0;
+  white-space: normal;
+  text-align: center;
 }
 
 .ai-btn-action-confirm {
@@ -1015,6 +1046,53 @@
 .ai-document-cancelled {
   color: var(--ai-text-muted);
 }
+.ai-hirepool-resume-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--ai-surface);
+  border: 1px solid var(--ai-border);
+  border-radius: 8px;
+}
+.ai-hirepool-resume-card strong,
+.ai-hirepool-resume-card p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.ai-hirepool-resume-card strong {
+  color: var(--ai-text);
+  font-size: 13px;
+}
+.ai-hirepool-resume-card p {
+  color: var(--ai-text-muted);
+  font-size: 12px;
+}
+.ai-hirepool-resume-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-hirepool-resume-card button {
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--ai-text);
+  background: var(--ai-bg);
+  font: inherit;
+  cursor: pointer;
+}
+.ai-hirepool-resume-card .ai-btn-resume-confirm,
+.ai-hirepool-resume-card .ai-btn-resume-prepare {
+  border-color: var(--ai-primary);
+  background: var(--ai-primary);
+  color: var(--ai-primary-contrast);
+}
+.ai-hirepool-resume-card button:disabled,
+.ai-attach-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 .ai-spinner {
   width: 16px;
   height: 16px;
@@ -1086,4 +1164,245 @@
   color: var(--ai-text);
   line-height: 1.4;
   margin: 0;
+}
+
+/* In-Chat Signup & Onboarding Styles */
+.ai-signup-card {
+  border-left: 3px solid #16a34a;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ai-signup-role-options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.ai-role-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--ai-border);
+  border-radius: 8px;
+  background: var(--ai-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+.ai-role-btn:hover {
+  border-color: #16a34a;
+  background: rgba(22, 163, 74, 0.05);
+}
+.ai-role-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #16a34a;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+.ai-role-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ai-text);
+}
+.ai-role-desc {
+  font-size: 11.5px;
+  color: var(--ai-text-muted);
+  margin-top: 2px;
+}
+.ai-signup-form,
+.ai-profile-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ai-form-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ai-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ai-form-label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ai-text);
+  line-height: 1.35;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  min-width: 0;
+}
+.ai-form-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  font-size: 12.5px;
+  background: var(--ai-bg);
+  color: var(--ai-text);
+  outline: none;
+  font-family: inherit;
+}
+.ai-form-input:focus {
+  border-color: #16a34a;
+  box-shadow: 0 0 0 1px #16a34a;
+}
+.ai-password-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.ai-password-wrapper .ai-form-input {
+  width: 100%;
+  padding-right: 32px;
+}
+.ai-password-toggle {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--ai-text-muted);
+  padding: 2px;
+}
+.ai-form-input.ai-input-invalid {
+  border-color: #dc2626 !important;
+  background-color: #fef2f2 !important;
+}
+.ai-field-error {
+  color: #dc2626;
+  font-size: 11px;
+  margin-top: 2px;
+  line-height: 1.3;
+}
+
+/* Structured Action Review Cards & Tables */
+.ai-review-card-content {
+  margin: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-review-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.ai-review-table tr {
+  border-bottom: 1px solid var(--ai-border);
+}
+.ai-review-table tr:last-child {
+  border-bottom: none;
+}
+.ai-review-key {
+  text-align: left;
+  padding: 6px 10px;
+  width: 38%;
+  font-weight: 600;
+  color: var(--ai-text-muted);
+  background: rgba(0, 0, 0, 0.02);
+  vertical-align: top;
+}
+.ai-review-val {
+  padding: 6px 10px;
+  color: var(--ai-text);
+  font-weight: 500;
+  vertical-align: top;
+}
+.ai-review-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ai-review-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--ai-text-muted);
+}
+.ai-review-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ai-review-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+.ai-review-tag.preferred {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+.ai-review-desc {
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--ai-text);
+  padding: 6px 8px;
+  background: var(--ai-bg);
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+.ai-btn-action-edit {
+  background: transparent;
+  color: var(--ai-text);
+  border: 1px solid var(--ai-border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.ai-btn-action-edit:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: var(--ai-text-muted);
+}
+.ai-verification-body {
+  padding: 4px 0;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ai-role-btn {
+  width: 100%;
+  box-sizing: border-box;
 }

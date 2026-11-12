@@ -1,5 +1,5 @@
 export const SERVER_DEFAULTS = {
-  PORT: 3000,
+  PORT: 3100,
   HOST: '0.0.0.0',
   NODE_ENV: 'development',
   RATE_LIMIT: {
@@ -8,7 +8,7 @@ export const SERVER_DEFAULTS = {
   },
   SESSION: {
     TTL_MS: 2 * 60 * 60 * 1000, // 2 hours
-    MAX_MESSAGES_IN_CONTEXT: 20
+    MAX_MESSAGES_IN_CONTEXT: 60
   },
   GEMINI: {
     DEFAULT_MODEL: 'gemini-flash-lite-latest',

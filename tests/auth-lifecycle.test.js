@@ -6,6 +6,7 @@ import { setAIProvider } from '../backend/src/providers/factory.js';
 import { signJwt, verifyJwt } from '../backend/src/middleware/auth.js';
 import { sessionManager } from '../backend/src/session-manager.js';
 import { AssistantApiClient } from '../widget/src/api-client.js';
+import { HostIntegrationAdapter } from '../widget/src/integration.js';
 import { DOCUMENT_PROCESSING_CONSENT_VERSION } from '../config/document-upload.js';
 
 const TEST_JWT_SECRET = 'test-secret-key-for-auth-lifecycle-verification-12345';
@@ -267,6 +268,21 @@ describe('Authentication Lifecycle & Production Fix Verification', () => {
   // SECTION 4: External Host Integration Mode
   // ==========================================
   describe('4. External Host Integration (HostIntegrationAdapter)', () => {
+    test('Host integration validates and returns the opaque session scope', async () => {
+      const integration = new HostIntegrationAdapter({
+        version: 1,
+        application: { id: 'hirepool', name: 'HirePool' },
+        getSessionScope: async () => 'opaque-session-scope'
+      });
+
+      assert.equal(await integration.getSessionScope(), 'opaque-session-scope');
+      await assert.rejects(() => new HostIntegrationAdapter({
+        version: 1,
+        application: { id: 'hirepool', name: 'HirePool' },
+        getSessionScope: async () => 'unsafe/session/scope'
+      }).getSessionScope(), /opaque identifier/);
+    });
+
     test('Host integration getAuthHeaders takes precedence over demo token', async () => {
       process.env.NODE_ENV = 'production';
       process.env.AUTH_MODE = 'jwt';

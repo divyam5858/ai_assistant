@@ -4,6 +4,7 @@ import { parseDocument, DocumentProcessingError } from '../services/document-par
 import { sessionManager } from '../session-manager.js';
 import { authenticate } from '../middleware/auth.js';
 import { DOCUMENT_PROCESSING_CONSENT_VERSION } from '../../../config/document-upload.js';
+import { createSessionOptions } from '../session-scope.js';
 
 export const documentsRouter = Router();
 
@@ -77,11 +78,7 @@ documentsRouter.post('/upload', requireDocumentProcessingConsent, handleMulterUp
     const conversationId = req.body.conversationId || req.query.conversationId || null;
     const assistantId = req.body.assistantId || req.query.assistantId || 'default';
 
-    const authUser = req.user;
-    const sessionOptions = {
-      userId: authUser?.id || null,
-      tenantId: authUser?.tenantId || null
-    };
+    const sessionOptions = createSessionOptions(req.user, assistantId);
 
     if (req.file) {
       fileBuffer = req.file.buffer;
@@ -174,11 +171,8 @@ documentsRouter.post('/upload', requireDocumentProcessingConsent, handleMulterUp
 documentsRouter.get('/:conversationId', (req, res, next) => {
   try {
     const { conversationId } = req.params;
-    const authUser = req.user;
-    const sessionOptions = {
-      userId: authUser?.id || null,
-      tenantId: authUser?.tenantId || null
-    };
+    const assistantId = req.query.assistantId || 'default';
+    const sessionOptions = createSessionOptions(req.user, assistantId);
 
     const documents = sessionManager.getDocuments(conversationId, sessionOptions);
     res.json({
@@ -206,11 +200,8 @@ documentsRouter.get('/:conversationId', (req, res, next) => {
 documentsRouter.delete('/:conversationId/:documentId', (req, res, next) => {
   try {
     const { conversationId, documentId } = req.params;
-    const authUser = req.user;
-    const sessionOptions = {
-      userId: authUser?.id || null,
-      tenantId: authUser?.tenantId || null
-    };
+    const assistantId = req.query.assistantId || 'default';
+    const sessionOptions = createSessionOptions(req.user, assistantId);
 
     const removed = sessionManager.removeDocument(conversationId, documentId, sessionOptions);
     if (!removed) {
@@ -240,11 +231,8 @@ documentsRouter.delete('/:conversationId/:documentId', (req, res, next) => {
 documentsRouter.delete('/:conversationId', (req, res, next) => {
   try {
     const { conversationId } = req.params;
-    const authUser = req.user;
-    const sessionOptions = {
-      userId: authUser?.id || null,
-      tenantId: authUser?.tenantId || null
-    };
+    const assistantId = req.query.assistantId || 'default';
+    const sessionOptions = createSessionOptions(req.user, assistantId);
 
     const cleared = sessionManager.clearDocuments(conversationId, sessionOptions);
     res.json({

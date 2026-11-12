@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import {
+  createHirePoolPrincipal,
+  findHirePoolContextBySdkCredential
+} from '../local-integrations/hirepool-session-store.js';
 
 /**
  * Authentication error with 401 HTTP status code
@@ -305,6 +309,14 @@ export function authenticate(options = {}) {
       return next();
     }
 
+    if (creds.type === 'bearer') {
+      const localHirePoolContext = findHirePoolContextBySdkCredential(creds.token);
+      if (localHirePoolContext) {
+        req.user = createHirePoolPrincipal(localHirePoolContext);
+        return next();
+      }
+    }
+
     // 3. Credentials were provided: validate them
     try {
       // API Key validation
@@ -349,6 +361,10 @@ export function authenticate(options = {}) {
           id: principalId.trim(),
           tenantId: payload.tenant_id || payload.tenantId || payload.tid || null,
           role: payload.role || payload.user_type || 'user',
+          assistantId: typeof payload.assistantId === 'string' ? payload.assistantId : null,
+          applicationId: typeof (payload.applicationId || payload.application_id) === 'string'
+            ? (payload.applicationId || payload.application_id)
+            : null,
           scopes: Array.isArray(payload.scopes) ? payload.scopes : (payload.scope ? payload.scope.split(' ') : []),
           rawClaims: payload
         };

@@ -29,13 +29,35 @@ function getSafeStorage(storageType = 'session') {
 
 export class AssistantStorage {
   constructor(assistantId = 'default', storageType = 'session') {
+    this.assistantId = assistantId;
     this.prefix = `ai_assistant_${assistantId}_`;
     this.store = getSafeStorage(storageType);
+    this.sessionStore = storageType === 'session' ? this.store : getSafeStorage('session');
+    this.userScope = 'guest_';
+  }
+
+  setUser(userId = null) {
+    this.userScope = userId ? `usr_${String(userId).trim()}_` : 'guest_';
+  }
+
+  getUserScope() {
+    return this.userScope;
+  }
+
+  _getKey(key) {
+    if (key === 'hirepool_session' || key === 'is_open') {
+      return `${this.prefix}${key}`;
+    }
+    return `${this.prefix}${this.userScope || ''}${key}`;
   }
 
   get(key, defaultValue = null) {
     try {
-      const raw = this.store.getItem(this.prefix + key);
+      const fullKey = this._getKey(key);
+      let raw = this.store.getItem(fullKey);
+      if (raw === null && this.userScope === 'guest_') {
+        raw = this.store.getItem(this.prefix + key);
+      }
       return raw !== null ? JSON.parse(raw) : defaultValue;
     } catch {
       return defaultValue;
@@ -44,7 +66,8 @@ export class AssistantStorage {
 
   set(key, value) {
     try {
-      this.store.setItem(this.prefix + key, JSON.stringify(value));
+      const fullKey = this._getKey(key);
+      this.store.setItem(fullKey, JSON.stringify(value));
     } catch (err) {
       console.warn('AssistantStorage write failed:', err);
     }
@@ -52,7 +75,11 @@ export class AssistantStorage {
 
   remove(key) {
     try {
-      this.store.removeItem(this.prefix + key);
+      const fullKey = this._getKey(key);
+      this.store.removeItem(fullKey);
+      if (this.userScope === 'guest_') {
+        this.store.removeItem(this.prefix + key);
+      }
     } catch {}
   }
 
@@ -72,9 +99,84 @@ export class AssistantStorage {
     this.remove('conversation_id');
   }
 
+  /**
+   * Persist only non-sensitive HirePool signup UI progress (`role_selection` or
+   * `signup_form` step, selected role, consultancy type, and public agreement metadata)
+   * in sessionStorage. Passwords, verification links/tokens, and auth credentials
+   * are strictly excluded.
+   *
+   * @param {object|null} progress
+   */
+  saveSignupProgress(progress) {
+    if (!progress || typeof progress !== 'object') {
+      this.clearSignupProgress();
+      return;
+    }
+    const allowedStates = new Set(['role_selection', 'signup_form']);
+    const normalizedState = allowedStates.has(progress.state) ? progress.state : null;
+    const normalizedRole = ['candidate', 'client', 'consultancy'].includes(progress.selectedRole)
+      ? progress.selectedRole
+      : null;
+
+    if (!normalizedState) {
+      this.clearSignupProgress();
+      return;
+    }
+
+    const agreement = progress.agreement && typeof progress.agreement === 'object'
+      ? {
+          id: progress.agreement.id || progress.agreement.version_id || null,
+          version: progress.agreement.version || null,
+          role: progress.agreement.role || normalizedRole || null,
+          title: progress.agreement.title || null,
+          summary: progress.agreement.summary || null,
+          effectiveDate: progress.agreement.effectiveDate || progress.agreement.effective_date || null
+        }
+      : null;
+
+    const safePayload = {
+      state: normalizedState,
+      selectedRole: normalizedRole,
+      consultancyType: typeof progress.consultancyType === 'string'
+        ? progress.consultancyType.slice(0, 64)
+        : null,
+      agreement
+    };
+
+    try {
+      const fullKey = this._getKey('hirepool_signup_progress');
+      this.sessionStore.setItem(fullKey, JSON.stringify(safePayload));
+    } catch (err) {
+      console.warn('AssistantStorage signup progress write failed:', err);
+    }
+  }
+
+  getSignupProgress() {
+    try {
+      const fullKey = this._getKey('hirepool_signup_progress');
+      const raw = this.sessionStore.getItem(fullKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !['role_selection', 'signup_form'].includes(parsed.state)) {
+        return null;
+      }
+      return parsed;
+    } catch {
+      return null;
+    }
+  }
+
+  clearSignupProgress() {
+    try {
+      const fullKey = this._getKey('hirepool_signup_progress');
+      this.sessionStore.removeItem(fullKey);
+    } catch {}
+  }
+
   clear() {
     try {
       this.clearConversationId();
+      this.clearSignupProgress();
       this.remove('messages');
       this.remove('documents');
       this.remove('is_open');

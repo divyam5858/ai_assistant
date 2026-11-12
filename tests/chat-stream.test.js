@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { AssistantApiClient } from '../widget/src/api-client.js';
 import { createApp } from '../backend/src/app.js';
 import { setAIProvider } from '../backend/src/providers/factory.js';
+import { GeminiProvider } from '../backend/src/providers/gemini.js';
 import { ActionRegistry } from '../backend/src/actions/registry.js';
 import { clearAssistantRegistries, setAssistantActionRegistry } from '../connectors/bridge.js';
 import { signJwt } from '../backend/src/middleware/auth.js';
@@ -18,8 +19,12 @@ const ENVIRONMENT_KEYS = [
   'JWT_SECRET',
   'API_KEY',
   'GEMINI_API_KEY',
+  'CORS_ALLOWED_ORIGINS',
   'ENABLE_INTEGRATION_DEMO',
-  'ENABLE_HIREPOOL_INTEGRATION'
+  'ENABLE_HIREPOOL_INTEGRATION',
+  'ENABLE_HIREPOOL_LOCAL_BRIDGE',
+  'DYNAMIC_API_DISCOVERY_ENABLED',
+  'API_DISCOVERY_ALLOWED_HOSTS'
 ];
 const originalEnvironment = Object.fromEntries(
   ENVIRONMENT_KEYS.map(key => [key, process.env[key]])
@@ -31,7 +36,11 @@ function configureUnauthenticatedTests() {
   process.env.AUTH_REQUIRED = 'false';
   delete process.env.JWT_SECRET;
   delete process.env.API_KEY;
+  delete process.env.CORS_ALLOWED_ORIGINS;
   delete process.env.ENABLE_HIREPOOL_INTEGRATION;
+  delete process.env.ENABLE_HIREPOOL_LOCAL_BRIDGE;
+  delete process.env.DYNAMIC_API_DISCOVERY_ENABLED;
+  delete process.env.API_DISCOVERY_ALLOWED_HOSTS;
 }
 
 class RecordingProvider {
@@ -117,6 +126,160 @@ test('health endpoint uses the configured provider health check', async () => {
   assert.equal(response.status, 200);
   assert.equal(response.body.status, 'ok');
   assert.equal(response.body.provider.name, provider.name);
+});
+
+test('production CORS reflects only explicitly configured SDK host origins', async () => {
+  setAIProvider(new RecordingProvider());
+  process.env.NODE_ENV = 'production';
+  process.env.AUTH_MODE = 'none';
+  process.env.AUTH_REQUIRED = 'false';
+  process.env.CORS_ALLOWED_ORIGINS = 'https://candidate.example.test, https://agency.example.test';
+  const app = createApp();
+
+  const allowed = await request(app)
+    .get('/api/health')
+    .set('Origin', 'https://candidate.example.test')
+    .expect(200);
+  assert.equal(allowed.headers['access-control-allow-origin'], 'https://candidate.example.test');
+
+  const denied = await request(app)
+    .get('/api/health')
+    .set('Origin', 'https://untrusted.example.test')
+    .expect(200);
+  assert.equal(denied.headers['access-control-allow-origin'], undefined);
+});
+
+test('CORS rejects malformed origin configuration', () => {
+  process.env.CORS_ALLOWED_ORIGINS = 'https://candidate.example.test/path';
+
+  assert.throws(() => createApp(), /CORS_ALLOWED_ORIGINS must contain exact HTTP\(S\) origins or the pinned local extension origin/);
+});
+
+test('Gemini function calling sends schemas, parses calls, and formats sanitized follow-up results', async () => {
+  const requests = [];
+  const responses = [
+    {
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{
+            functionCall: { name: 'lookup_job', args: { jobId: 'job-42' } },
+            thoughtSignature: 'mock-thought-signature'
+          }]
+        },
+        finishReason: 'STOP'
+      }]
+    },
+    {
+      candidates: [{
+        content: { role: 'model', parts: [{ text: 'The job is open.' }] },
+        finishReason: 'STOP'
+      }]
+    }
+  ];
+  const provider = new GeminiProvider({
+    apiKey: 'mock-gemini-key',
+    model: 'gemini-flash-lite-latest',
+    fetch: async (url, options) => {
+      requests.push({ url: String(url), body: JSON.parse(options.body) });
+      return {
+        ok: true,
+        json: async () => responses.shift()
+      };
+    }
+  });
+  const tools = [{
+    type: 'function',
+    function: {
+      name: 'lookup_job',
+      description: 'Read an approved job record.',
+      parameters: {
+        type: 'object',
+        properties: { jobId: { type: 'string' } },
+        required: ['jobId'],
+        additionalProperties: false
+      }
+    }
+  }];
+  const first = await provider.chat({
+    messages: [{ role: 'user', content: 'Find job 42.' }],
+    tools
+  });
+
+  assert.equal(first.toolCalls[0].name, 'lookup_job');
+  assert.equal(first.toolCalls[0].rawName, 'lookup_job');
+  assert.deepEqual(first.toolCalls[0].arguments, { jobId: 'job-42' });
+  assert.equal(requests[0].body.tools[0].functionDeclarations[0].parameters.type, 'OBJECT');
+  assert.deepEqual(requests[0].body.tools[0].functionDeclarations[0].parameters.required, ['jobId']);
+
+  const followUp = await provider.chat({
+    messages: [
+      { role: 'user', content: 'Find job 42.' },
+      {
+        role: 'assistant',
+        content: null,
+        rawMessage: first.rawMessage,
+        tool_calls: [{
+          id: first.toolCalls[0].id,
+          type: 'function',
+          function: { name: first.toolCalls[0].rawName, arguments: JSON.stringify(first.toolCalls[0].arguments) }
+        }]
+      },
+      {
+        role: 'tool',
+        tool_call_id: first.toolCalls[0].id,
+        name: first.toolCalls[0].rawName,
+        content: JSON.stringify({ status: 'success', data: { id: 'job-42', status: 'open' } })
+      }
+    ]
+  });
+  assert.equal(followUp.text, 'The job is open.');
+  assert.deepEqual(
+    requests[1].body.contents[1],
+    {
+      role: 'model',
+      parts: [{
+        functionCall: { name: 'lookup_job', args: { jobId: 'job-42' } },
+        thoughtSignature: 'mock-thought-signature'
+      }]
+    }
+  );
+  assert.deepEqual(
+    requests[1].body.contents[2].parts[0].functionResponse,
+    { name: 'lookup_job', response: { status: 'success', data: { id: 'job-42', status: 'open' } } }
+  );
+  assert.equal(JSON.stringify(requests.map(item => item.body)).includes('mock-gemini-key'), false);
+});
+
+test('Gemini streaming preserves thought signatures on function calls', async () => {
+  const rawMessage = {
+    role: 'model',
+    parts: [{
+      functionCall: { name: 'lookup_job', args: { jobId: 'job-42' } },
+      thoughtSignature: 'mock-stream-thought-signature'
+    }]
+  };
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+        candidates: [{ content: rawMessage, finishReason: 'STOP' }]
+      })}\n\n`));
+      controller.close();
+    }
+  });
+  const provider = new GeminiProvider({
+    apiKey: 'mock-gemini-key',
+    model: 'gemini-flash-lite-latest',
+    fetch: async () => ({ ok: true, body: stream })
+  });
+
+  const result = await provider.chatStream({
+    messages: [{ role: 'user', content: 'Find job 42.' }]
+  });
+
+  assert.deepEqual(result.rawMessage, rawMessage);
+  assert.equal(result.toolCalls[0].name, 'lookup_job');
 });
 
 test('lazy PDF worker parses a synthetic PDF document', async () => {

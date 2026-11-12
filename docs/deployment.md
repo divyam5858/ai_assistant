@@ -28,7 +28,7 @@ server {
     # SSL certificates...
 
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3100;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -47,7 +47,7 @@ server {
 
     # Static SDK caching
     location /sdk/ {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:3100;
         add_header Cache-Control "public, max-age=3600, stale-while-revalidate=86400";
         add_header Access-Control-Allow-Origin "*";
     }
@@ -106,9 +106,10 @@ Configure the following in your Vercel Project Settings -> Environment Variables
 - `AI_PROVIDER`: Explicitly select a configured provider (`gemini`, `groq`, or `openai`).
 - The selected provider's server-only credential, such as `GEMINI_API_KEY`, `GROQ_API_KEY`, or `OPENAI_API_KEY`.
 - `AUTH_MODE=jwt` and `JWT_SECRET` (plus optional `JWT_ISSUER` / `JWT_AUDIENCE`) for authenticated production APIs.
+- `CORS_ALLOWED_ORIGINS` set to the exact origins of pages that call the SDK API.
 - `ENABLE_HIREPOOL_INTEGRATION=true` only when intentionally registering the bundled HirePool read actions.
 
-The SDK API is available to any website origin. Express supplies wildcard CORS for API responses; Vercel does not add a second API CORS policy. Cookie credentials are not allowed cross-origin with this policy; use `Authorization` bearer tokens or `X-API-Key`. No CORS allowlist environment variable is required.
+Express permits API CORS only for the configured origins in production; Vercel does not add a second API CORS policy. Cross-origin cookies are not enabled. The static SDK script remains loadable cross-origin independently of API CORS.
 
 PDF extraction uses the parser package's embedded worker data; the serverless function no longer depends on a separate `pdf.worker.mjs` file being packaged.
 

@@ -15,12 +15,11 @@ The AI Assistant Plugin implements defense-in-depth principles across the browse
 
 ## 2. Cross-Origin Resource Sharing (CORS)
 
-- The public SDK API responds with `Access-Control-Allow-Origin: *`; websites do not need to be added to an origin allowlist.
+- Production API CORS permits only exact origins listed in `CORS_ALLOWED_ORIGINS`. Invalid entries (including paths, credentials, query strings, and fragments) fail configuration rather than being silently normalized.
+- In non-production environments, an empty allowlist retains permissive development behavior; set an explicit list when testing deployed origins.
+- The static `/sdk` script is served with cross-origin script-loading headers; this does not grant API access to the page that loaded it.
 - API preflight supports `GET`, `POST`, `PUT`, `PATCH`, and `DELETE`, with `OPTIONS` handled by the CORS middleware. The allow-header list includes bearer/API-key authorization and document consent headers.
-- API CORS does not enable `Access-Control-Allow-Credentials`. Cross-origin cookie/session authentication is therefore not supported with the wildcard policy. Use the existing `Authorization: Bearer ...` or `X-API-Key` header modes. Same-origin cookie requests may still use the SDK's default `same-origin` fetch credentials setting.
-- CORS is not authorization. Production authentication, session ownership, connector authorization, document consent, rate limiting, and request validation remain enforced independently of `Origin` or `Referer`.
-
----
+- API CORS does not enable `Access-Control-Allow-Credentials`; cross-origin cookie/session authentication is therefore not supported. CORS is not authorization: authentication, session ownership, connector authorization, document consent, rate limiting, and request validation remain enforced independently of `Origin` or `Referer`.
 
 ## 3. Rate Limiting & Denial-of-Service Defense
 
@@ -61,3 +60,4 @@ The AI Assistant Plugin implements defense-in-depth principles across the browse
 - Document upload requires the current versioned consent assertion before multipart parsing and before extraction. It is a protocol check, not cryptographic proof that a person clicked a checkbox. The host must provide accurate, applicable privacy language.
 - Extracted document text is held in temporary process memory and can be sent to the configured AI provider with later chat requests. Avoid uploads of data that the host is not permitted to transmit; configure retention and deletion at the deployment boundary.
 - The PDF parser uses the package's embedded worker data to avoid relying on a separate worker file being present in a serverless deployment.
+- Dynamic API discovery is disabled by default and forcibly disabled in production. Integrations are registered in server code, require an authorization callback, use an exact HTTPS hostname allowlist, pin public DNS results, reject redirects, and generate only explicitly allowlisted GET/JSON POST/PUT operations. Writes are schema-validated and staged server-side; execution requires a short-lived, one-use confirmation bound to the authenticated user, session, operation, and arguments. API credentials are supplied by a server callback; browser tokens and arbitrary client-provided specs/URLs are never used. Response fields must be allowlisted per operation.

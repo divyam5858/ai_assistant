@@ -13,8 +13,14 @@ import { sessionsRouter } from './routes/sessions.js';
 import { connectorsRouter } from './routes/connectors.js';
 import { documentsRouter } from './routes/documents.js';
 import { authRouter } from './routes/auth.js';
+import { dynamicApiConfirmationRouter } from './routes/dynamic-api-confirmation.js';
+import { createHirePoolResumeRouter } from './routes/hirepool-resume.js';
+import { createHirePoolSignupRouter } from './routes/hirepool-signup.js';
 import { registerIntegrationDemoActions } from './actions/integration-demo.js';
 import { registerHirePoolActions } from '../../integrations/hirepool/actions.js';
+import { registerHirePoolLocalDevelopmentIntegration } from '../../integrations/hirepool/local-development.js';
+import { hirePoolAuthRouter, isHirePoolLocalBridgeEnabled } from './local-integrations/hirepool-auth.js';
+import { HIREPOOL_LOCAL_DASHBOARD_ORIGINS } from '../../config/hirepool-site-policy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +33,9 @@ export function createApp() {
   if (process.env.ENABLE_HIREPOOL_INTEGRATION === 'true') {
     registerHirePoolActions();
   }
+  if (isHirePoolLocalBridgeEnabled()) {
+    registerHirePoolLocalDevelopmentIntegration();
+  }
 
   const app = express();
   if (process.env.VERCEL) {
@@ -35,6 +44,38 @@ export function createApp() {
 
   // Basic security & parsing
   app.use(configureHelmet());
+  app.use((req, res, next) => {
+    const requestPath = req.path || '';
+    const normalizedPath = requestPath.replace(/\/+$/, '');
+    const isDashboardSessionExchange =
+      req.method === 'POST' &&
+      normalizedPath === '/api/hirepool/session';
+    const isDashboardSessionPreflight =
+      req.method === 'OPTIONS' &&
+      normalizedPath === '/api/hirepool/session';
+    const isDashboardSessionValidate =
+      req.method === 'GET' &&
+      normalizedPath === '/api/hirepool/session/validate';
+    const isDashboardSessionValidatePreflight =
+      req.method === 'OPTIONS' &&
+      normalizedPath === '/api/hirepool/session/validate';
+    if (
+      requestPath.startsWith('/api/hirepool/') &&
+      HIREPOOL_LOCAL_DASHBOARD_ORIGINS.includes(req.get('Origin')) &&
+      !isDashboardSessionExchange &&
+      !isDashboardSessionPreflight &&
+      !isDashboardSessionValidate &&
+      !isDashboardSessionValidatePreflight
+    ) {
+      return res.status(403).json({
+        error: {
+          code: 'ORIGIN_NOT_ALLOWED',
+          message: 'The local HirePool assistant bridge is not available from dashboard origins'
+        }
+      });
+    }
+    next();
+  });
   app.use(configureCors());
   app.use(express.json({ limit: process.env.MAX_REQUEST_BODY_SIZE || '1mb' }));
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -82,6 +123,12 @@ export function createApp() {
   app.use('/api/connectors', connectorsRouter);
   app.use('/api/documents', documentsRouter);
   app.use('/api/auth', authRouter);
+  app.use('/api/dynamic-api/confirm', dynamicApiConfirmationRouter);
+  if (isHirePoolLocalBridgeEnabled()) {
+    app.use('/api/hirepool', hirePoolAuthRouter);
+    app.use('/api/hirepool/resume', createHirePoolResumeRouter());
+    app.use('/api/hirepool/signup', createHirePoolSignupRouter());
+  }
 
   // Serve compiled SDK distribution bundle
   const widgetDistPath = path.resolve(rootDir, 'widget/dist');
