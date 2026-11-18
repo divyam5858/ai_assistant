@@ -72,7 +72,7 @@ export const HIREPOOL_COMPETITOR_POLICY_RESPONSE =
   "I cannot provide ratings or reviews for external job platforms. On HirePool, I can help you with matching jobs, job applications, candidate profiles, recruitment, and job postings.";
 
 export const HIREPOOL_PRODUCT_COMPARISON_RESPONSE =
-  "We don't provide subjective comparisons with external platforms. On HirePool, we focus on verified candidate profiles, AI-powered skill matching, and direct application tracking connecting candidates, employers, and recruitment consultancies. I can help you explore opportunities or manage your hiring workflows directly on HirePool.";
+  "While I cannot provide ratings or reviews for external job platforms like Naukri, here is what distinguishes HirePool:\n\n- **AI-Powered Matching:** Evaluates candidate skills, experience, and preferences against active job requirements for ranked match scores.\n- **Direct Recruitment Across Three Roles:** Dedicated workspaces for **Candidates** (free forever), **Employers / Companies** (direct hiring, screening, and AI video interviews), and **Consultancies / Staffing Agencies** (talent bench and placement tracking).\n- **Transparent Application Tracking:** Real-time visibility into application stages without duplicate submissions.\n\nLet me know if you would like to explore jobs, learn about our hiring features, or create an account!";
 
 export const HIREPOOL_AMBIGUOUS_CLARIFICATION_RESPONSE =
   "Could you please clarify what you'd like assistance with? I can help you with HirePool job matching, applications, candidate profiles, or employer hiring workflows.";
@@ -128,7 +128,8 @@ const OUT_OF_SCOPE_PATTERNS = [
 
 // Career-related patterns
 const CAREER_RELATED_PATTERNS = [
-  /\b(?:actively looking for (?:a )?job|looking for (?:a )?job|seeking (?:a )?job|unemployed and looking|job hunting|job search tips)\b/i,
+  /\b(?:actively\s+looking(?:\s+for\s+(?:a\s+)?(?:job|work|role|position|opportunities))?|looking for (?:a )?job|seeking (?:a )?job|unemployed and looking|job hunting|job search tips)\b/i,
+  /\b(?:\d+\+?\s+years?(?:\s+of)?\s+experience)\b/i,
   /\b(?:improve|optimize|enhance|review|format)\s+(?:my\s+)?(?:.*?\s+)?(?:resume|cv|curriculum vitae)\b/i,
   /\b(?:interview (?:prep|preparation|questions|tips|guidance)|prepare for (?:an? )?interview)\b/i,
   /\b(?:skills? (?:required|needed|essential|demanded) (?:for|in)|what skills? (?:do i need|should i learn|are required))\b/i,
@@ -137,6 +138,9 @@ const CAREER_RELATED_PATTERNS = [
 
 // HirePool in-scope patterns
 const HIREPOOL_IN_SCOPE_PATTERNS = [
+  // Candidate list inquiry across employers/consultancies (also covers "my candidates",
+  // "give the list of candidates", "show candidates", "list candidates")
+  /\b(?:have\s+(?:a\s+)?list\s+of\s+candidates|list\s+of\s+candidates|give\s+(?:me\s+)?(?:the\s+)?(?:list\s+of\s+)?candidates?|my\s+candidates?|show\s+candidates?|list\s+candidates?|view\s+candidates?|check\s+candidates?|our\s+candidates?|bench\s+candidates?)\b/i,
   // Jobs & matching (including public capability discovery, work modes & experience levels)
   /\b(?:find|search|match|recommend|show|get|list|explore|browse|filter|check|view|looking\s+for|look\s+for|are\s+there|do\s+you\s+have|have|offer|support)\b(?:\s+for)?\s+(?:[a-z0-9-]+\s+){0,3}(?:jobs?|openings?|vacancies|roles?|positions?|opportunities?|candidates?)\b/i,
   /\b(?:types?|kinds?|categories)\s+of\s+(?:jobs?|roles?|positions?|opportunities?|employment|work)\b/i,
@@ -148,8 +152,9 @@ const HIREPOOL_IN_SCOPE_PATTERNS = [
   /\b(?:show|view|edit|update|add|improve|complete|finish|fill\s+out|set\s+up|write|draft|help\s+me\s+write|check|replace|remove|delete|what\s+(?:information|info|details|fields?)\s+(?:is|are)\s+missing(?:\s+(?:on|in|from))?)\s+(?:a\s+|an\s+|the\s+|my\s+|our\s+)?(?:candidate\s+|company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?(?:profile|skills?|work\s*experience|experience|education(?:al)?(?:\s+details)?|degree|graduation(?:\s+details)?|professional\s+summary|summary|previous\s+company|employment(?:\s+details)?|contact\s+info|certifications?|certificates?|preferences?|expected\s+salary|notice\s+period|phone(?:\s+number)?|job\s+title|designation|gstin|gst_tax_id|company_size|consultancy_type|industry_specialization|headquarters|linkedin|github|portfolio)\b/i,
   /\b(?:my\s+profile|candidate\s+profile|company\s+profile|client\s+profile|consultancy\s+profile|agency\s+profile|personal\s+profile|profile\s+details|edit\s+my\s+profile|update\s+my\s+profile|improve\s+my\s+profile|update\s+profile|complete\s+profile|profile\s+completion|my\s+skills|add\s+education|add\s+work\s+experience|add\s+professional\s+summary|add\s+a\s+degree|add\s+graduation\s+details|add\s+certifications?)\b/i,
   /\b(?:add|edit|update|remove|delete)\s+(?:b\.?\s*e\.?|b\.?\s*tech|m\.?\s*tech|b\.?\s*sc|m\.?\s*sc|bachelor(?:'s)?|master(?:'s)?|mba|phd|diploma)\b/i,
-  // Applications & followups
-  /\b(?:show|view|my|check|list)\s+(?:my\s+)?(?:job\s+)?applications?\b/i,
+  // Applications, offers & followups
+  /\b(?:show|view|my|check|list)\s+(?:my\s+)?(?:job\s+)?(?:applications?|off(?:er|re)s?)\b/i,
+  /\b(?:my\s+off(?:er|re)s?|job\s+offers?|any\s+offers?|check\s+(?:my\s+)?off(?:er|re)s?|off(?:er|re)s?\s+received|view\s+off(?:er|re)s?|show\s+off(?:er|re)s?|do\s+i\s+have\s+(?:any\s+)?off(?:er|re)s?)\b/i,
   /\b(?:my applications|application status|applied jobs?|withdraw application|apply for (?:a|this|the|that) job|apply(?:\s+for|\s+to)?\s+multiple\s+jobs?)\b/i,
   /\b(?:apply|apply for|apply to)\b/i,
   /\b(?:the first (?:one|job)?|the second (?:one|job)?|the third (?:one|job)?|first one|second one|third one)\b/i,
@@ -158,8 +163,8 @@ const HIREPOOL_IN_SCOPE_PATTERNS = [
   // Resume
   /\b(?:upload(?:ing)? resume|parse resume|view resume|download resume|show resume|my resume pdf|attached resume)\b/i,
   // Client & Consultancy workflows
-  /\b(?:post (?:a )?job|create (?:a )?(?:new )?job|my company profile|company jobs|client jobs|review applicants?|hiring dashboard|job applicants?)\b/i,
-  /\b(?:candidate pool|bench candidates?|add (?:a )?candidate|place (?:a )?candidate|consultancy profile|agency profile|placement stats|bench pool)\b/i,
+  /\b(?:post (?:a )?job|create (?:a )?(?:new )?job|my company profile|company jobs|client jobs|review applicants?|hiring dashboard|job applicants?|(?:client\s+|company\s+|employer\s+|hiring\s+)?dashboard(?:\s+stats|\s+statistics)?|dashboard\s+stats?|hiring\s+pipeline|pipeline\s+stats?)\b/i,
+  /\b(?:candidate pool|bench candidates?|(?:add|create|register|onboard)\s+(?:a\s+)?(?:new\s+)?candidate|place (?:a )?candidate|submit\s+(?:a\s+)?candidate|submit\s+[A-Za-z\s.'-]+?\s+(?:for|to)|candidate\s+submission|consultancy profile|agency profile|placement stats|bench pool)\b/i,
   /\bhow\s+(?:do|can)\s+(?:candidates?|employers?|companies|clients?|consultanc(?:y|ies)|agencies)\s+(?:use|find|hire|post|apply|manage|search|work)\b/i,
   // Pricing, trials, subscriptions & candidate cost (with or without explicit "HirePool" mention)
   /\b(?:is\s+(?:hirepool|it|this(?:\s+platform)?)\s+free(?:\s+for\s+(?:candidates?|job\s*seekers?|employers?|companies))?|free\s+for\s+(?:candidates?|job\s*seekers?))\b/i,
@@ -234,6 +239,11 @@ export function hasInScopeSessionContext(session, options = {}) {
     return true;
   }
 
+  const jobCreate = session?.hirePoolJobCreate;
+  if (jobCreate?.active && !['completed', 'cancelled'].includes(jobCreate.stage)) {
+    return true;
+  }
+
   if (options.signupState && options.signupState !== 'idle' && options.signupState !== 'cancelled') {
     return true;
   }
@@ -285,7 +295,7 @@ function hasRecentProfileEditHistory(options = {}) {
     const hText = typeof h?.content === 'string' ? h.content : '';
     if (
       h?.role === 'assistant' &&
-      /\b(?:which\s+\*{0,2}skills?|add\s+or\s+replace|would\s+you\s+like\s+to\s+\*{0,2}add\*{0,2}.*\*{0,2}replace\*{0,2}|confirm\s*&\s*execute|review\s+your\s+proposed\s+hirepool\s+.*\s+profile\s+update|share\s+(?:the\s+)?\*{0,2}(?:education|work\s+experience|certification|preference|link|basic|company|consultancy|personal)\b)/i.test(hText)
+      /\b(?:which\s+\*{0,2}skills?|add\s+or\s+replace|would\s+you\s+like\s+to\s+\*{0,2}add\*{0,2}.*\*{0,2}replace\*{0,2}|confirm\s*&\s*execute|review\s+your\s+proposed\s+hirepool\s+.*\s+profile\s+update|share\s+(?:the\s+)?\*{0,2}(?:education|work\s+experience|certification|preference|link|basic|company|consultancy|personal)|create and publish a new job|Job Title recorded|Please provide a \*{0,2}Job Description|Job Description recorded)\b/i.test(hText)
     ) {
       return true;
     }
@@ -297,14 +307,33 @@ function resolveInScopeIntent(text, publicTopic, session = null) {
   if (isHirePoolLogoutRequest(text)) {
     return HIREPOOL_INTENT_CATEGORIES.ACCOUNT_LOGOUT;
   }
-  if (isHirePoolProfileEditRequest(text)) {
+  const isSwitchIntent =
+    /\b(?:my\s+off(?:er|re)s?|job\s+offers?|any\s+offers?|check\s+(?:my\s+)?off(?:er|re)s?|off(?:er|re)s?\s+received|view\s+off(?:er|re)s?|show\s+off(?:er|re)s?|do\s+i\s+have\s+(?:any\s+)?off(?:er|re)s?)\b/i.test(text) ||
+    /\b(?:apply(?:\s+(?:for|to))?|matching\s+jobs?|job\s+applications?|my\s+applications?|search\s+(?:for\s+)?jobs?|find\s+jobs?)\b/i.test(text) ||
+    /\b(?:(?:view|show|display|see|what(?:'s| is)\s+(?:on|in))\s+(?:my\s+)?profile|(?:my\s+)?dashboard)\b/i.test(text);
+
+  if (isHirePoolProfileEditRequest(text) && !isSwitchIntent) {
     return HIREPOOL_INTENT_CATEGORIES.PROFILE_EDIT;
   }
   if (
     session?.hirePoolProfileEdit?.active &&
+    !session?.hirePoolProfileEdit?.suspended &&
+    !isSwitchIntent &&
     !['completed', 'cancelled'].includes(session.hirePoolProfileEdit.stage)
   ) {
     return HIREPOOL_INTENT_CATEGORIES.PROFILE_EDIT;
+  }
+  if (
+    session?.hirePoolJobCreate?.active &&
+    !['completed', 'cancelled'].includes(session.hirePoolJobCreate.stage)
+  ) {
+    return HIREPOOL_INTENT_CATEGORIES.ACCOUNT_OPERATIONS;
+  }
+  if (
+    session?.consultancyCandidateDraft?.active ||
+    session?.consultancySubmissionDraft?.active
+  ) {
+    return HIREPOOL_INTENT_CATEGORIES.ACCOUNT_OPERATIONS;
   }
   if (publicTopic === HIREPOOL_PUBLIC_TOPICS.PRICING) {
     return HIREPOOL_INTENT_CATEGORIES.PRICING_SUBSCRIPTIONS;
@@ -315,7 +344,7 @@ function resolveInScopeIntent(text, publicTopic, session = null) {
   if (/\b(?:sign(?:\s+(?:me|us))?\s*up|signup|register|registration|create\s+(?:an?\s+)?account|new\s+account|(?:don'?t|do\s+not|haven'?t|have\s+not)\s+(?:got\s+)?(?:have\s+)?(?:an?\s+)?(?:hirepool\s+)?account(?:\s+yet)?|no\s+(?:hirepool\s+)?account(?:\s+yet)?|want\s+to\s+join|would\s+like\s+to\s+join|join\s+hirepool|onboarding|verify\s+email|verification\s+link)\b/i.test(text)) {
     return HIREPOOL_INTENT_CATEGORIES.CANDIDATE_ONBOARDING;
   }
-  if (/\b(?:my\s+(?:applications?|application\s+status|profile|resume|assessments?|interviews?|account|jobs?)|view\s+my\s+(?:company\s+|consultancy\s+|personal\s+|candidate\s+)?profile|show\s+my\s+(?:company\s+|consultancy\s+|personal\s+|candidate\s+)?profile|my\s+applications?|apply\s+for\s+(?:a|this|the|that)|withdraw\s+application|candidate\s+pool|company\s+jobs|bench\s+candidates)\b/i.test(text)) {
+  if (/\b(?:my\s+(?:off(?:er|re)s?|applications?|application\s+status|profile|resume|assessments?|interviews?|account|jobs?)|view\s+my\s+(?:company\s+|consultancy\s+|personal\s+|candidate\s+)?profile|show\s+my\s+(?:company\s+|consultancy\s+|personal\s+|candidate\s+)?profile|my\s+applications?|apply\s+for\s+(?:a|this|the|that)|withdraw\s+application|candidate\s+pool|company\s+jobs|bench\s+candidates?|submissions?|(?:add|create|register|onboard)\s+(?:a\s+)?(?:new\s+)?candidate|submit\s+(?:a\s+)?candidate)\b/i.test(text)) {
     return HIREPOOL_INTENT_CATEGORIES.ACCOUNT_OPERATIONS;
   }
   if (
@@ -352,6 +381,18 @@ export function classifyHirePoolMessage(message, session = null, options = {}) {
       publicTopic: null,
       reason: 'Empty message',
       suggestedResponse: HIREPOOL_AMBIGUOUS_CLARIFICATION_RESPONSE
+    };
+  }
+
+  // Conversational Greeting Check
+  const GREETING_PATTERN = /^\s*(?:hi|hello|hey|greetings|good\s+(?:morning|afternoon|evening)|hi\s+hirepool|hello\s+hirepool)\b[.!?]*\s*$/i;
+  if (GREETING_PATTERN.test(text)) {
+    return {
+      category: HIREPOOL_DOMAIN_CATEGORIES.HIREPOOL_IN_SCOPE,
+      intent: HIREPOOL_INTENT_CATEGORIES.PLATFORM_INFO,
+      publicTopic: null,
+      reason: 'Standard conversational greeting',
+      suggestedResponse: "Hello! I'm your HirePool assistant. I can help you explore matching jobs, review applications, update your profile, or guide you through employer hiring and candidate screening on HirePool. What can I help you with today?"
     };
   }
 
@@ -417,20 +458,30 @@ export function classifyHirePoolMessage(message, session = null, options = {}) {
   const hasActiveContext = hasInScopeSessionContext(session, options);
   const publicTopic = detectHirePoolPublicTopic(text);
 
-  // 4. Workflow, Profile-Edit & Visitor Continuation Check (e.g. "1", "Acme Labs", "the first one", "show details", "continue", or institution/summary/skills/URL/numeric values during active profile edit)
+  // 4. Workflow, Profile-Edit & Visitor Continuation Check (e.g. "1", "Acme Labs", "the first one", "show details", "continue", or institution/summary/skills/URL/numeric values during active profile edit / job creation)
+  const isIntentSwitch =
+    /\b(?:my\s+off(?:er|re)s?|job\s+offers?|any\s+offers?|check\s+(?:my\s+)?off(?:er|re)s?|off(?:er|re)s?\s+received|view\s+off(?:er|re)s?|show\s+off(?:er|re)s?|do\s+i\s+have\s+(?:any\s+)?off(?:er|re)s?)\b/i.test(text) ||
+    /\b(?:apply(?:\s+(?:for|to))?|matching\s+jobs?|job\s+applications?|my\s+applications?|search\s+(?:for\s+)?jobs?|find\s+jobs?)\b/i.test(text) ||
+    /\b(?:(?:view|show|display|see|what(?:'s| is)\s+(?:on|in))\s+(?:my\s+)?profile|(?:my\s+)?dashboard)\b/i.test(text);
+
   const inActiveProfileEdit = Boolean(
-    (session?.hirePoolProfileEdit?.active &&
-      !['completed', 'cancelled'].includes(session.hirePoolProfileEdit.stage)) ||
-    hasRecentProfileEditHistory(options)
+    session?.hirePoolProfileEdit?.active &&
+    !session?.hirePoolProfileEdit?.suspended &&
+    !['completed', 'cancelled'].includes(session.hirePoolProfileEdit.stage) &&
+    !isIntentSwitch
+  ) || (hasRecentProfileEditHistory(options) && !isIntentSwitch);
+  const inActiveJobCreate = Boolean(
+    session?.hirePoolJobCreate?.active &&
+      !['completed', 'cancelled'].includes(session.hirePoolJobCreate.stage)
   );
   const generalKnowledgeQ = /^(?:who|what|where|when|why|how|which)\s+(?:is|are|was|were|do|does|did|can|will|should)\b/i;
 
-  if (inActiveProfileEdit && !generalKnowledgeQ.test(text) && !isHirePoolLogoutRequest(text)) {
+  if ((inActiveProfileEdit || inActiveJobCreate) && !generalKnowledgeQ.test(text) && !isHirePoolLogoutRequest(text)) {
     return {
       category: HIREPOOL_DOMAIN_CATEGORIES.HIREPOOL_IN_SCOPE,
       intent: resolveInScopeIntent(text, publicTopic, session),
       publicTopic,
-      reason: 'Active HirePool profile editing step continuation'
+      reason: inActiveJobCreate ? 'Active HirePool job creation step continuation' : 'Active HirePool profile editing step continuation'
     };
   }
 
@@ -496,7 +547,7 @@ export function classifyHirePoolMessage(message, session = null, options = {}) {
   }
 
   // 8. Broad Semantic Analysis: Check for recruitment/employment/pricing/legal keywords vs general knowledge
-  const recruitmentTerms = /\b(?:workplace|work\s+(?:mode|types?|experience|from\s+home)|open\s+to\s+work|hire|hiring|recruit(?:ing|er|ers|ment)?|candidates?|employers?|jobs?|positions?|roles?|salar(?:y|ies)|resumes?|cvs?|interviews?|applications?|applied|apply(?:ing)?|applicants?|skills?|careers?|office|compan(?:y|ies)|staffing|consultanc(?:y|ies)|agenc(?:y|ies)|bench|accounts?|onboard(?:ing)?|freshers?|fresh\s+graduates?|entry[\s-]*level|experienced(?:\s+professionals?)?|remote|hybrid|onsite|contract(?:[\s-]*to[\s-]*hire)?|full[\s-]*time|pricing|free\s+trial|plans?|subscriptions?|privacy(?:\s+policy)?|terms\s+of\s+service|user\s+agreement|data\s+retention|hirepool)\b/i;
+  const recruitmentTerms = /\b(?:workplace|work\s+(?:mode|types?|experience|from\s+home)|open\s+to\s+work|hire|hiring|recruit(?:ing|er|ers|ment)?|candidates?|employers?|jobs?|positions?|roles?|salar(?:y|ies)|resumes?|cvs?|interviews?|applications?|applied|apply(?:ing)?|applicants?|skills?|careers?|office|compan(?:y|ies)|staffing|consultanc(?:y|ies)|agenc(?:y|ies)|bench|accounts?|onboard(?:ing)?|freshers?|fresh\s+graduates?|entry[\s-]*level|experienced(?:\s+professionals?)?|remote|hybrid|onsite|contract(?:[\s-]*to[\s-]*hire)?|full[\s-]*time|pricing|free\s+trial|plans?|subscriptions?|privacy(?:\s+policy)?|terms\s+of\s+service|user\s+agreement|data\s+retention|hirepool|dashboard|dashboards|pipeline|submit|submitting|submissions?|developers?|engineers?|programmers?|specialists?|architects?)\b/i;
   if (recruitmentTerms.test(text)) {
     return {
       category: HIREPOOL_DOMAIN_CATEGORIES.HIREPOOL_IN_SCOPE,
@@ -519,8 +570,13 @@ export function classifyHirePoolMessage(message, session = null, options = {}) {
     };
   }
 
-  // Default fallback: if very short and unrecognized
-  if (text.split(/\s+/).length <= 2) {
+  // Default fallback: if very short and unrecognized — but exempt authenticated account
+  // shorthand phrases like "my candidates", "my profile", "my dashboard" so they reach
+  // the authenticated Consultancy / Client / Candidate handlers instead of returning an
+  // ambiguous clarification response.
+  const isAuthenticatedAccountShorthand =
+    /^(?:my\s+(?:candidates?|bench|profile|dashboard|applications?|jobs?|submissions?|stats?|placements?|pool)|view\s+(?:my\s+)?(?:profile|dashboard)|list\s+(?:my\s+)?candidates?)$/i.test(text);
+  if (text.split(/\s+/).length <= 2 && !isAuthenticatedAccountShorthand) {
     return {
       category: HIREPOOL_DOMAIN_CATEGORIES.AMBIGUOUS,
       intent: HIREPOOL_INTENT_CATEGORIES.AMBIGUOUS,

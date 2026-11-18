@@ -262,6 +262,13 @@ export class SessionManager {
     return session?.context ?? null;
   }
 
+  getSession(conversationId, options = {}) {
+    const session = this._getActiveSession(conversationId);
+    if (!session) return null;
+    this.validateOwnership(session, options);
+    return session;
+  }
+
   setWorkflowState(conversationId, workflowState, options = {}) {
     const session = this._getActiveSession(conversationId);
     if (!session) return false;

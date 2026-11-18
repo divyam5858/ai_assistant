@@ -83,6 +83,12 @@ function resultMessage(actionDefinition, data) {
     const candIdInfo = data?.id ? ` (Candidate ID: ${data.id})` : '';
     return `${candName} has been added to your consultancy talent pool.${candIdInfo}`;
   }
+  if (operationId === 'create_consultancy_application_api_v1_applications_consultancy_post') {
+    const candName = data?.candidate_name ? ` for ${data.candidate_name}` : '';
+    const jobTitle = data?.job_title ? ` to ${data.job_title}` : '';
+    const appIdInfo = data?.id ? ` (Application ID: ${data.id})` : '';
+    return `Candidate submission${candName}${jobTitle} was completed successfully${appIdInfo}. Current status: "${data?.status || 'applied'}".`;
+  }
   if (operationId === 'update_company_profile_api_v1_clients_profile_put') {
     return data?.verificationStatus === 'verified'
       ? 'Your company profile has been updated successfully and verified in HirePool.'
@@ -201,6 +207,147 @@ export async function executeAndVerifyProfileUpdate(actionDefinition, argumentsV
   }
 }
 
+export async function executeAndVerifyJobCreation(actionDefinition, argumentsValue, user, {
+  request,
+  fetchSpec
+} = {}) {
+  const data = await executeDynamicApiAction(actionDefinition, argumentsValue, user, {
+    approved: true,
+    request
+  });
+
+  if (!data || !data.id) {
+    return {
+      status: 'unverified',
+      message: 'HirePool job creation could not be verified by the server. Please check your jobs list.',
+      data: { ...data, verificationStatus: 'unverified' }
+    };
+  }
+
+  let verifiedJob = null;
+  try {
+    const registry = await createRequestActionRegistry(
+      'hirepool',
+      user,
+      new ActionRegistry({ actions: [] }),
+      { fetchSpec }
+    );
+    const jobReadAction = registry.list().find(action =>
+      action.metadata?.dynamicApi?.operationId === 'get_job_api_v1_jobs__job_id__get' ||
+      action.metadata?.dynamicApi?.operationId === 'get_my_jobs_api_v1_jobs_my_jobs_get'
+    );
+    if (jobReadAction) {
+      const readParams = jobReadAction.metadata?.dynamicApi?.operationId === 'get_job_api_v1_jobs__job_id__get'
+        ? { job_id: data.id }
+        : {};
+      verifiedJob = await executeDynamicApiAction(jobReadAction, readParams, user, { request });
+    }
+  } catch {}
+
+  const jobTitle = data?.title || argumentsValue?.body?.title || 'job';
+  return {
+    status: 'success',
+    message: `Your ${jobTitle} job has been created and verified in HirePool (Job ID: ${data.id}).`,
+    data: { ...data, verifiedJob: verifiedJob || data, verificationStatus: 'verified' }
+  };
+}
+
+export async function executeAndVerifyConsultancyCandidateAdd(actionDefinition, argumentsValue, user, {
+  request,
+  fetchSpec
+} = {}) {
+  const data = await executeDynamicApiAction(actionDefinition, argumentsValue, user, {
+    approved: true,
+    request
+  });
+
+  if (!data || !data.id) {
+    return {
+      status: 'unverified',
+      message: 'HirePool candidate record could not be verified by the server. Please check your agency bench list.',
+      data: { ...data, verificationStatus: 'unverified' }
+    };
+  }
+
+  let verifiedCandidate = null;
+  try {
+    const registry = await createRequestActionRegistry(
+      'hirepool',
+      user,
+      new ActionRegistry({ actions: [] }),
+      { fetchSpec }
+    );
+    const candReadAction = registry.list().find(action =>
+      action.metadata?.dynamicApi?.operationId === 'get_candidate_api_v1_consultancies_candidates__candidate_id__get' ||
+      action.metadata?.dynamicApi?.operationId === 'list_candidates_api_v1_consultancies_candidates_get'
+    );
+    if (candReadAction) {
+      const readParams = candReadAction.metadata?.dynamicApi?.operationId === 'get_candidate_api_v1_consultancies_candidates__candidate_id__get'
+        ? { candidate_id: data.id }
+        : { query: { query: data.email || data.first_name } };
+      verifiedCandidate = await executeDynamicApiAction(candReadAction, readParams, user, { request });
+    }
+  } catch {}
+
+  const candName = data?.full_name ||
+    `${data?.first_name || ''} ${data?.last_name || ''}`.trim() ||
+    `${argumentsValue?.body?.first_name || ''} ${argumentsValue?.body?.last_name || ''}`.trim() ||
+    'Candidate';
+  const candIdInfo = data?.id ? ` (Candidate ID: ${data.id})` : '';
+  return {
+    status: 'success',
+    message: `${candName} has been added to your consultancy talent pool.${candIdInfo}`,
+    data: { ...data, verifiedCandidate: verifiedCandidate || data, verificationStatus: 'verified' }
+  };
+}
+
+export async function executeAndVerifyConsultancySubmission(actionDefinition, argumentsValue, user, {
+  request,
+  fetchSpec
+} = {}) {
+  const data = await executeDynamicApiAction(actionDefinition, argumentsValue, user, {
+    approved: true,
+    request
+  });
+
+  if (!data || !data.id) {
+    return {
+      status: 'unverified',
+      message: 'HirePool candidate submission could not be verified by the server.',
+      data: { ...data, verificationStatus: 'unverified' }
+    };
+  }
+
+  let verifiedSubmission = null;
+  try {
+    const registry = await createRequestActionRegistry(
+      'hirepool',
+      user,
+      new ActionRegistry({ actions: [] }),
+      { fetchSpec }
+    );
+    const subReadAction = registry.list().find(action =>
+      action.metadata?.dynamicApi?.operationId === 'get_consultancy_submissions_api_v1_applications_for_consultancy_get'
+    );
+    if (subReadAction) {
+      const readParams = {
+        query: {
+          application_id: data.id
+        }
+      };
+      verifiedSubmission = await executeDynamicApiAction(subReadAction, readParams, user, { request });
+    }
+  } catch {}
+
+  const candName = data?.candidate_name ? ` for ${data.candidate_name}` : '';
+  const jobTitle = data?.job_title ? ` to ${data.job_title}` : '';
+  return {
+    status: 'success',
+    message: `Candidate submission${candName}${jobTitle} was completed successfully (Application ID: ${data.id}, Status: "${data.status || 'applied'}").`,
+    data: { ...data, verifiedSubmission: verifiedSubmission || data, verificationStatus: 'verified' }
+  };
+}
+
 dynamicApiConfirmationRouter.post('/cancel', authenticate(), async (req, res) => {
   const user = req.user;
   if (!isVerifiedHirePoolUser(user)) {
@@ -238,6 +385,22 @@ dynamicApiConfirmationRouter.post('/cancel', authenticate(), async (req, res) =>
           }
         : null
     ), createSessionOptions(user, 'hirepool'));
+    const currentSession = sessionManager.getSession(cancelCtx.conversationId, createSessionOptions(user, 'hirepool'));
+    if (currentSession?.hirePoolJobCreate) {
+      currentSession.hirePoolJobCreate = {
+        active: false,
+        stage: 'cancelled',
+        jobData: null,
+        confirmationToken: null,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    if (currentSession?.consultancyCandidateDraft) {
+      currentSession.consultancyCandidateDraft = null;
+    }
+    if (currentSession?.consultancySubmissionDraft) {
+      currentSession.consultancySubmissionDraft = null;
+    }
   }
   return res.json({ status: 'cancelled' });
 });
@@ -268,6 +431,15 @@ dynamicApiConfirmationRouter.post('/', authenticate(), async (req, res) => {
       async (actionDefinition, argumentsValue) => {
         if (getProfileReadOperationId(actionDefinition.metadata.dynamicApi.operationId)) {
           return executeAndVerifyProfileUpdate(actionDefinition, argumentsValue, user);
+        }
+        if (actionDefinition.metadata?.dynamicApi?.operationId === 'create_job_api_v1_jobs_post') {
+          return executeAndVerifyJobCreation(actionDefinition, argumentsValue, user);
+        }
+        if (actionDefinition.metadata?.dynamicApi?.operationId === 'add_candidate_api_v1_consultancies_candidates_post') {
+          return executeAndVerifyConsultancyCandidateAdd(actionDefinition, argumentsValue, user);
+        }
+        if (actionDefinition.metadata?.dynamicApi?.operationId === 'create_consultancy_application_api_v1_applications_consultancy_post') {
+          return executeAndVerifyConsultancySubmission(actionDefinition, argumentsValue, user);
         }
         const data = await executeDynamicApiAction(actionDefinition, argumentsValue, user, { approved: true });
         return {
@@ -391,6 +563,36 @@ dynamicApiConfirmationRouter.post('/', authenticate(), async (req, res) => {
                 updatedAt: new Date().toISOString()
               };
             }, createSessionOptions(user, 'hirepool'));
+            return;
+          }
+
+          if (operationId === 'create_job_api_v1_jobs_post') {
+            const currentSession = sessionManager.getSession(conversationId, createSessionOptions(user, 'hirepool'));
+            if (currentSession) {
+              currentSession.hirePoolJobCreate = {
+                active: false,
+                stage: 'completed',
+                jobData: null,
+                confirmationToken: null,
+                updatedAt: new Date().toISOString()
+              };
+            }
+            return;
+          }
+
+          if (operationId === 'add_candidate_api_v1_consultancies_candidates_post') {
+            const currentSession = sessionManager.getSession(conversationId, createSessionOptions(user, 'hirepool'));
+            if (currentSession) {
+              currentSession.consultancyCandidateDraft = null;
+            }
+            return;
+          }
+
+          if (operationId === 'create_consultancy_application_api_v1_applications_consultancy_post') {
+            const currentSession = sessionManager.getSession(conversationId, createSessionOptions(user, 'hirepool'));
+            if (currentSession) {
+              currentSession.consultancySubmissionDraft = null;
+            }
             return;
           }
 

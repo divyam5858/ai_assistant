@@ -1956,12 +1956,25 @@ var AssistantSDKBundle = (() => {
       this._buildDOM();
       this._restoreState();
       this._attachEvents();
+      this._authMessageHandler = (event) => {
+        if (!event.data || typeof event.data !== "object") return;
+        if (event.data.type === "hirepool-auth:logout") {
+          void this._handleHirePoolLogout({ loggedOut: true }, "You have been logged out of HirePool.");
+        }
+      };
+      if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+        window.addEventListener("message", this._authMessageHandler);
+      }
       document.body.appendChild(this.hostElement);
     }
     /**
      * Unmount widget and clean up DOM
      */
     unmount() {
+      if (this._authMessageHandler && typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+        window.removeEventListener("message", this._authMessageHandler);
+        this._authMessageHandler = null;
+      }
       this._stopVerificationWatcher();
       if (this.abortController) {
         this.abortController.abort();
@@ -2163,6 +2176,27 @@ var AssistantSDKBundle = (() => {
         }
         const retryBtn = e.target.closest(".ai-error-retry-btn");
         if (retryBtn) {
+          if (typeof this._lastErrorRetryCallback === "function") {
+            const callback = this._lastErrorRetryCallback;
+            this._lastErrorRetryCallback = null;
+            retryBtn.disabled = true;
+            retryBtn.textContent = "Verifying...";
+            void (async () => {
+              try {
+                const banner = retryBtn.closest(".ai-error-banner");
+                if (banner && banner.parentNode) {
+                  banner.parentNode.removeChild(banner);
+                }
+                await callback();
+              } catch (retryErr) {
+                this._renderErrorBanner(
+                  retryErr?.message || "Verification retry failed. Please try again.",
+                  callback
+                );
+              }
+            })();
+            return;
+          }
           const lastUserMsg = [...this.messages].reverse().find((m) => m.role === "user");
           if (lastUserMsg) {
             this.sendMessage(lastUserMsg.content);
@@ -2285,7 +2319,15 @@ var AssistantSDKBundle = (() => {
         this.storage.setUser(null);
       }
       this.storage.remove("hirepool_session");
+      this.storage.clear();
+      this.activeConversationId = null;
+      this.messages = [];
+      if (this.messagesList) {
+        this.messagesList.innerHTML = "";
+      }
       this.setHostIdentity(null, "guest");
+      this.setGreeting(this._initialGreeting || "", this._initialSuggestedPrompts || []);
+      this._persistState();
     }
     async _handleHirePoolLogout(logoutInfo = {}, confirmationMessage = null) {
       this.cancelGeneration();
@@ -2466,8 +2508,17 @@ var AssistantSDKBundle = (() => {
       }
       this.activeConversationId = null;
       this.messages = [];
-      this.messagesList.innerHTML = "";
+      if (this.messagesList) {
+        this.messagesList.innerHTML = "";
+      }
+      this._resetHirePoolIntegrationToGuest();
+      this.setHostIdentity(null, "guest");
+      if (typeof this.storage.setUser === "function") {
+        this.storage.setUser(null);
+      }
+      this.storage.remove("hirepool_session");
       this.storage.clear();
+      this.setGreeting(this._initialGreeting || "", this._initialSuggestedPrompts || []);
       this._persistState();
       this._setGenerating(false);
       this.events.emit("conversation:cleared");
@@ -3426,7 +3477,8 @@ var AssistantSDKBundle = (() => {
         this._recoverableBanner = null;
       }
     }
-    _renderErrorBanner(message) {
+    _renderErrorBanner(message, retryCallback = null) {
+      this._lastErrorRetryCallback = typeof retryCallback === "function" ? retryCallback : null;
       const banner = document.createElement("div");
       banner.className = "ai-error-banner";
       banner.innerHTML = `
@@ -5176,9 +5228,6 @@ ${tag}` : tag;
       if (typeof conversationId !== "string" || typeof message !== "string" || !message.trim()) {
         throw new TypeError("A conversation ID and pending message are required");
       }
-      if (this.widgetUI.activeConversationId && this.widgetUI.activeConversationId !== conversationId) {
-        throw new Error("The login continuation does not match the active conversation");
-      }
       this.widgetUI.activeConversationId = conversationId;
       this.widgetUI._persistState();
       if (!this.widgetUI.isOpen) this.widgetUI.open();
@@ -5222,7 +5271,30 @@ ${tag}` : tag;
         '"': "&quot;",
         "'": "&#39;"
       })[character]);
-      this.widgetUI._renderErrorBanner(safeMessage);
+      const isVerificationError = /could not verify|verification|session/i.test(message);
+      const retryCallback = isVerificationError ? async () => {
+        let credential = null;
+        if (typeof this.integration?.getAuthHeaders === "function") {
+          try {
+            const headers = await this.integration.getAuthHeaders();
+            const authHeader = headers?.Authorization || headers?.authorization || "";
+            credential = authHeader.replace(/^Bearer\s+/i, "").trim() || null;
+          } catch {
+          }
+        }
+        if (!credential) {
+          credential = this.widgetUI?.storage?.get?.("hirepool_session")?.credential || null;
+        }
+        if (credential && this.apiClient) {
+          const result = await this.apiClient.validateHirePoolSession(credential);
+          if (result?.valid) {
+            await this.refreshSessionScope({ preserveConversation: true });
+            return;
+          }
+        }
+        throw new Error("HirePool login verification failed. Please try signing in again.");
+      } : null;
+      this.widgetUI._renderErrorBanner(safeMessage, retryCallback);
     }
     displayHirePoolLoginNotice(message) {
       this._ensureInit();

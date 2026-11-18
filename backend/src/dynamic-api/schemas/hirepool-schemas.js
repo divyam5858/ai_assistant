@@ -385,6 +385,10 @@ export function validateCandidateCreation(input) {
 
   const isValid = missingFields.length === 0 && Object.keys(fieldErrors).length === 0;
 
+  const expYears = body.years_of_experience !== undefined
+    ? Number(body.years_of_experience)
+    : (body.experience_years !== undefined ? Number(body.experience_years) : 0);
+
   const normalized = {
     first_name: firstName,
     last_name: lastName,
@@ -392,9 +396,10 @@ export function validateCandidateCreation(input) {
     phone: body.phone ? String(body.phone).trim() : null,
     current_location: location,
     job_title: jobTitle,
-    experience_years: body.experience_years !== undefined ? Number(body.experience_years) : 0,
+    years_of_experience: expYears,
     skills,
-    notes: body.notes ? String(body.notes).trim() : ''
+    bench_status: body.bench_status || 'available',
+    notice_period_days: body.notice_period_days !== undefined && body.notice_period_days !== null ? Number(body.notice_period_days) : null
   };
 
   const formattedReview = {
@@ -406,7 +411,8 @@ export function validateCandidateCreation(input) {
       { label: 'Phone', value: normalized.phone || 'Not provided' },
       { label: 'Job title', value: jobTitle },
       { label: 'Location', value: location },
-      { label: 'Experience', value: `${normalized.experience_years} years` },
+      { label: 'Experience', value: `${expYears} years` },
+      { label: 'Bench status', value: normalized.bench_status },
       { label: 'Skills', value: skills.length > 0 ? skills.join(', ') : 'None listed' }
     ],
     requiredSkills: skills,

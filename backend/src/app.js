@@ -59,13 +59,29 @@ export function createApp() {
     const isDashboardSessionValidatePreflight =
       req.method === 'OPTIONS' &&
       normalizedPath === '/api/hirepool/session/validate';
+    const isDashboardSessionLogout =
+      req.method === 'POST' &&
+      normalizedPath === '/api/hirepool/session/logout';
+    const isDashboardSessionLogoutPreflight =
+      req.method === 'OPTIONS' &&
+      normalizedPath === '/api/hirepool/session/logout';
+    const isDashboardSessionRevoke =
+      req.method === 'POST' &&
+      normalizedPath === '/api/hirepool/session/revoke';
+    const isDashboardSessionRevokePreflight =
+      req.method === 'OPTIONS' &&
+      normalizedPath === '/api/hirepool/session/revoke';
     if (
       requestPath.startsWith('/api/hirepool/') &&
       HIREPOOL_LOCAL_DASHBOARD_ORIGINS.includes(req.get('Origin')) &&
       !isDashboardSessionExchange &&
       !isDashboardSessionPreflight &&
       !isDashboardSessionValidate &&
-      !isDashboardSessionValidatePreflight
+      !isDashboardSessionValidatePreflight &&
+      !isDashboardSessionLogout &&
+      !isDashboardSessionLogoutPreflight &&
+      !isDashboardSessionRevoke &&
+      !isDashboardSessionRevokePreflight
     ) {
       return res.status(403).json({
         error: {

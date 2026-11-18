@@ -7,6 +7,22 @@ const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_SPEC_BYTES = 1024 * 1024;
 const MAX_TIMEOUT_MS = 15000;
 const MAX_SPEC_BYTES = 5 * 1024 * 1024;
+
+const defaultHttpAgent = new http.Agent({
+  keepAlive: true,
+  maxSockets: 32,
+  maxFreeSockets: 10,
+  timeout: 30000,
+  keepAliveMsecs: 15000
+});
+
+const defaultHttpsAgent = new https.Agent({
+  keepAlive: true,
+  maxSockets: 32,
+  maxFreeSockets: 10,
+  timeout: 30000,
+  keepAliveMsecs: 15000
+});
 const IPV4_NON_PUBLIC_RANGES = [
   ['0.0.0.0', 8],
   ['10.0.0.0', 8],
@@ -228,7 +244,8 @@ export async function requestText(
     resolveAddress = lookupPublicAddress,
     requestFactory,
     allowLocalDevelopment = false,
-    allowedPorts = []
+    allowedPorts = [],
+    agent
   } = {}
 ) {
   if (!['GET', 'POST', 'PUT'].includes(method)) {
@@ -257,7 +274,16 @@ export async function requestText(
     url.hostname === 'localhost' &&
     allowedPorts.includes(Number(url.port));
   const makeRequest = requestFactory || (isLocalHttp ? http.request : https.request);
-  if (signal?.aborted) throw new Error('Request aborted');
+  const resolvedAgent = agent !== undefined
+    ? agent
+    : (requestFactory ? undefined : (isLocalHttp ? defaultHttpAgent : defaultHttpsAgent));
+  if (signal?.aborted) {
+    const err = new Error('Request aborted');
+    err.name = 'AbortError';
+    err.code = 'REQUEST_ABORTED';
+    err.statusCode = 499;
+    throw err;
+  }
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -280,14 +306,30 @@ export async function requestText(
         resolve(value);
       }
     };
-    const onAbort = () => finish(new Error('Request aborted'));
+    const onAbort = () => {
+      const abortError = new Error('Request aborted');
+      abortError.name = 'AbortError';
+      abortError.code = 'REQUEST_ABORTED';
+      abortError.statusCode = 499;
+      finish(abortError);
+    };
     if (signal?.aborted) {
-      finish(new Error('Request aborted'));
+      onAbort();
       return;
     }
 
     signal?.addEventListener('abort', onAbort, { once: true });
-    timeout = setTimeout(() => finish(new Error('Dynamic API request timed out')), timeoutMs);
+    timeout = setTimeout(() => {
+      const timeoutError = new Error('Dynamic API request timed out');
+      timeoutError.name = 'DynamicApiTimeoutError';
+      timeoutError.code = 'DYNAMIC_API_TIMEOUT';
+      timeoutError.statusCode = 504;
+      timeoutError.isTimeout = true;
+      timeoutError.timeoutMs = timeoutMs;
+      timeoutError.url = url.href;
+      timeoutError.method = method;
+      finish(timeoutError);
+    }, timeoutMs);
     timeout.unref?.();
 
     Promise.resolve()
@@ -308,6 +350,7 @@ export async function requestText(
           port: url.port || (url.protocol === 'https:' ? 443 : 80),
           path: `${url.pathname}${url.search}`,
           method,
+          ...(resolvedAgent ? { agent: resolvedAgent } : {}),
           headers: {
             Accept: allowYaml
               ? 'application/json, application/yaml, application/x-yaml, text/yaml, text/plain'
@@ -385,7 +428,14 @@ export async function requestText(
               : 'Dynamic API response could not be read'));
           }
         });
-        request.on('error', () => finish(new Error('Dynamic API request failed')));
+        request.on('error', err => {
+          const networkError = new Error(err?.message ? `Dynamic API request failed: ${err.message}` : 'Dynamic API request failed');
+          networkError.name = 'DynamicApiNetworkError';
+          networkError.code = err?.code || 'DYNAMIC_API_NETWORK_ERROR';
+          networkError.statusCode = 502;
+          networkError.cause = err;
+          finish(networkError);
+        });
         if (settled) {
           request.destroy();
           return;

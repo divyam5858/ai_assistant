@@ -18,6 +18,7 @@ import {
 import { createSessionOptions } from '../session-scope.js';
 import {
   getHirePoolContextBySessionId,
+  revokeHirePoolSessionBySdkCredential,
   revokeHirePoolSessionWithBackend,
   touchHirePoolSession
 } from '../local-integrations/hirepool-session-store.js';
@@ -37,6 +38,21 @@ import {
   isHirePoolHowToProfileQuestion,
   isHirePoolProfileEditRequest
 } from '../../../integrations/hirepool/candidate-profile-edit.js';
+import {
+  handleHirePoolJobCreateTurn,
+  isHirePoolJobCreateIntent
+} from '../../../integrations/hirepool/job-create.js';
+import {
+  handleHirePoolAgencyCandidateAddTurn,
+  isHirePoolAgencyCandidateAddIntent
+} from '../../../integrations/hirepool/agency-candidate-add.js';
+import {
+  handleHirePoolAgencyCandidateSubmitTurn,
+  isHirePoolAgencyCandidateSubmitIntent
+} from '../../../integrations/hirepool/agency-candidate-submit.js';
+import {
+  isHirePoolOrgProfileEditRequest
+} from '../../../integrations/hirepool/org-profile-edit.js';
 import {
   HIREPOOL_GROUNDED_KNOWLEDGE_PROMPT,
   HIREPOOL_PUBLIC_TOPICS,
@@ -143,6 +159,33 @@ function getUnverifiedHirePoolResponse(message, session, registry, signupContext
     return { text: HIREPOOL_LOGIN_UNVERIFIED_MESSAGE };
   }
 
+  // Handle recruiting / hiring intent
+  if (/\b(?:(?:here\s+for|interested\s+in|want\s+to|looking\s+to|need\s+to)\s+recruit(?:ing)?|looking\s+to\s+hire|need\s+to\s+hire|here\s+to\s+hire|hiring\s+for\s+(?:my|our|a)\s+company|job\s+requirement|post\s+jobs?)\b/i.test(message)) {
+    if (/\b(?:for\s+(?:my|our|a)\s+company|company|employer|direct\s+hire|in[\s-]house)\b/i.test(message)) {
+      visitor.selectedRole = 'client';
+      return {
+        text: 'HirePool supports company hiring workflows directly:\n\n- **Job Creation & Publishing:** Define role details including skills, work modes, and compensation.\n- **AI Candidate Matching:** Receive candidate matches ranked by skill overlap and verified background.\n- **Applicant Review & Screening:** Review incoming applications and evaluate candidate assessments in your pipeline.\n\nWould you like to sign up for an **Employer / Company account** to get started?'
+      };
+    }
+    return {
+      text: 'HirePool supports hiring and recruiting through two distinct account types:\n\n- **Employer / Company:** Hire directly for your internal company team — post jobs, review applicants, evaluate AI matching scores, and manage your hiring pipeline.\n- **Recruitment Consultancy / Agency:** Manage candidate talent pools across multiple client companies, submit candidates to open positions, and track placement pipelines.\n\nAre you looking to hire directly for your company (**Employer / Company account**), or recruit talent across multiple client companies as a **Recruitment Consultancy**?'
+    };
+  }
+
+  // Handle candidate list inquiries without assuming visitor's role
+  if (/\b(?:(?:have|got|uploaded?|upload|bring|import)\s+(?:a\s+)?(?:list\s+of\s+candidates|bench\s+candidates?|candidate\s+pool|talent\s+pool)|list\s+of\s+candidates)\b/i.test(message)) {
+    return {
+      text: 'HirePool supports candidate lists for both **Employers** and **Recruitment Consultancies**:\n\n- **Employers / Companies:** You can screen applicant lists, conduct AI video interviews, and manage hiring pipelines for your open roles.\n- **Consultancies / Staffing Agencies:** You can manage bench candidate pools, track submissions across multiple client jobs, and monitor placement metrics.\n\nAre you looking to hire candidates for your own company, or manage and place candidates as a staffing consultancy?'
+    };
+  }
+
+  // Handle experienced candidate job exploration
+  if (/\b(?:\d+\+?\s+years?(?:\s+of)?\s+experience)\b/i.test(message) && /\b(?:actively\s+looking|looking\s+for|seeking|job\s*seeker)\b/i.test(message)) {
+    return {
+      text: 'HirePool is a great platform for your job search! With your experience, you can explore opportunities across remote, hybrid, and onsite roles.\n\n- **Free Forever for Candidates:** Unlimited job applications, AI-powered skill matching, and real-time application tracking.\n- **AI Skill Matching:** Once signed in with your profile, our AI matches your skills and experience directly to active employer openings.\n- **Direct Applications:** Connect directly with hiring companies with no placement middleman fees.\n\nWould you like to sign up for a free Candidate account or learn more about how job matching works?'
+    };
+  }
+
   const signupRequested = isHirePoolSignupRequest(message);
   const loginRequested = isHirePoolLoginRequest(message);
   const accountRequested = isHirePoolAccountRequest(message);
@@ -175,7 +218,11 @@ function getUnverifiedHirePoolResponse(message, session, registry, signupContext
   if (signupRequested && resolvedRole) {
     text = `I can start your HirePool signup for the ${resolvedRole} role right here in chat, including email verification and profile onboarding.`;
   } else if (signupRequested) {
-    text = HIREPOOL_SIGNUP_OFFER_MESSAGE;
+    if ((visitor?.signupCardOfferedCount || 0) > 1) {
+      text = 'To get started, please let me know which role you would like to sign up as (**Candidate**, **Employer**, or **Consultancy**), or click the sign-up card below to begin in-chat onboarding.';
+    } else {
+      text = 'You can sign up for HirePool right here in the chat. We offer three account types:\n- **Candidate:** Free forever — find matching jobs, practice AI video interviews, and track applications.\n- **Employer / Company:** Post jobs, review applicants, and run automated candidate screenings.\n- **Consultancy / Staffing Agency:** Manage talent benches, track client submissions, and oversee placements.\n\nWhich role would you like to create an account for?';
+    }
   } else {
     text = HIREPOOL_LOGIN_OFFER_MESSAGE;
   }
@@ -733,6 +780,23 @@ export function formatHirePoolReadResults(dynamicResults, requestText = '', subm
     return formatMatchingJobs(matchingResult.data, matchingResult.notes || []);
   }
 
+  // Handle explicit API errors for known employer / consultancy operations
+  const specificErrorResult = dynamicResults.find(result => result.error);
+  if (specificErrorResult) {
+    if (specificErrorResult.operationId?.includes('jobs')) {
+      return 'Could not retrieve your jobs from HirePool at this time. Please try again.';
+    }
+    if (specificErrorResult.operationId?.includes('dashboard')) {
+      return 'Could not retrieve dashboard statistics at this time. Please try again.';
+    }
+    if (specificErrorResult.operationId?.includes('applications')) {
+      return 'Could not retrieve candidate applications at this time. Please try again.';
+    }
+    if (specificErrorResult.operationId?.includes('profile')) {
+      return 'Could not retrieve profile details at this time. Please try again.';
+    }
+  }
+
   // Company / Client jobs listing
   const jobsResult = dynamicResults.find(result =>
     result.operationId &&
@@ -770,9 +834,41 @@ export function formatHirePoolReadResults(dynamicResults, requestText = '', subm
   );
   if (consultancyProfileResult) return formatConsultancyProfile(consultancyProfileResult.data);
 
-  // Dashboard stats
+  // Employer / Client applications
+  const clientApplicationsResult = dynamicResults.find(result =>
+    result.operationId === 'get_client_applications_api_v1_applications_for_client_get' &&
+    result.data && (Array.isArray(result.data) || Array.isArray(result.data?.items))
+  );
+  if (clientApplicationsResult) {
+    const list = Array.isArray(clientApplicationsResult.data)
+      ? clientApplicationsResult.data
+      : clientApplicationsResult.data.items;
+    return formatClientApplicationsList(list);
+  }
+
+  // Employer / Client dashboard stats
+  const clientDashboardStatsResult = dynamicResults.find(result =>
+    result.operationId === 'get_dashboard_stats_api_v1_clients_dashboard_get' &&
+    result.data && typeof result.data === 'object'
+  );
+  if (clientDashboardStatsResult) return formatClientDashboardStats(clientDashboardStatsResult.data);
+
+  // Consultancy candidate submissions
+  const consultancySubmissionsResult = dynamicResults.find(result =>
+    result.operationId === 'get_consultancy_submissions_api_v1_applications_for_consultancy_get' &&
+    result.data && (Array.isArray(result.data) || Array.isArray(result.data?.items))
+  );
+  if (consultancySubmissionsResult) {
+    const list = Array.isArray(consultancySubmissionsResult.data)
+      ? consultancySubmissionsResult.data
+      : consultancySubmissionsResult.data.items;
+    return formatConsultancySubmissionsList(list);
+  }
+
+  // Consultancy dashboard stats
   const dashboardStatsResult = dynamicResults.find(result =>
-    result.operationId === 'get_dashboard_stats_api_v1_consultancies_dashboard_stats_get' &&
+    (result.operationId === 'get_dashboard_stats_api_v1_consultancies_dashboard_get' ||
+     result.operationId === 'get_dashboard_stats_api_v1_consultancies_dashboard_stats_get') &&
     result.data && typeof result.data === 'object'
   );
   if (dashboardStatsResult) return formatDashboardStats(dashboardStatsResult.data);
@@ -781,7 +877,90 @@ export function formatHirePoolReadResults(dynamicResults, requestText = '', subm
   return formatGeneralReadResults(dynamicResults);
 }
 
+export function formatClientApplicationsList(applications) {
+  if (!Array.isArray(applications) || applications.length === 0) {
+    return 'No candidate applications have been received yet for your posted jobs.\n\nYou can review your active jobs or check the applications portal directly at: http://localhost:5173/client/applications';
+  }
+  const lines = [
+    '## Candidate Applications for Your Jobs\n',
+    `Found **${applications.length}** application${applications.length === 1 ? '' : 's'}:\n`
+  ];
+  for (const [index, app] of applications.slice(0, 15).entries()) {
+    const candidateName = app.candidate_name || 'Candidate';
+    const jobTitle = app.job_title || 'Position';
+    const rawStatus = app.status || 'applied';
+    const status = rawStatus.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+    lines.push(`### ${index + 1}. ${candidateName} — ${jobTitle}`);
+    lines.push(`- **Status:** ${status}`);
+    if (app.matching_score !== undefined && app.matching_score !== null) {
+      lines.push(`- **Match Score:** ${Math.round(app.matching_score)}%`);
+    }
+    if (app.candidate_location) {
+      lines.push(`- **Location:** ${app.candidate_location}`);
+    }
+    if (Array.isArray(app.candidate_skills) && app.candidate_skills.length > 0) {
+      lines.push(`- **Skills:** ${app.candidate_skills.slice(0, 5).join(', ')}`);
+    }
+    if (app.created_at) {
+      const date = new Date(app.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+      lines.push(`- **Applied On:** ${date}`);
+    }
+    lines.push('');
+  }
+  lines.push('You can review and manage candidate applications at [Review Applications](http://localhost:5173/client/applications).');
+  return lines.join('\n');
+}
+
+export function formatClientDashboardStats(stats) {
+  if (!stats || typeof stats !== 'object' || stats.error) {
+    return 'Could not retrieve Employer dashboard statistics at this time. Please try again.';
+  }
+  const totalJobs = stats.total_jobs ?? 0;
+  const activeJobs = stats.active_jobs ?? 0;
+  const totalApps = stats.total_applications ?? 0;
+  const pendingReview = stats.pending_review ?? 0;
+  const shortlisted = stats.shortlisted ?? 0;
+  const hired = stats.hired ?? 0;
+
+  const lines = [
+    '## Employer Dashboard Statistics\n',
+    '### Dashboard Overview',
+    `- **Active Jobs:** ${activeJobs}`,
+    `- **Total Applications:** ${totalApps}`,
+    `- **Pending Review:** ${pendingReview}`,
+    `- **Total Jobs Posted:** ${totalJobs}`,
+    '',
+    '### Awaiting Your Action',
+    `- **Shortlisted Candidates:** ${shortlisted}`,
+    `- **Ready for Interviews:** ${shortlisted}`,
+    `- **Review Applications Portal:** [Review Applications](http://localhost:5173/client/applications)`,
+    '',
+    '### Hiring Pipeline',
+    `- **Applied:** ${totalApps}`,
+    `- **In Review:** ${pendingReview}`,
+    `- **Shortlisted:** ${shortlisted}`,
+    `- **Hired:** ${hired}`
+  ];
+
+  if (stats.pending_budget_requests) {
+    lines.push(`- **Pending Budget Requests:** ${stats.pending_budget_requests}`);
+  }
+
+  if (Array.isArray(stats.recent_applications) && stats.recent_applications.length > 0) {
+    lines.push('', '### Recent Applications');
+    for (const app of stats.recent_applications.slice(0, 5)) {
+      const score = app.matching_score ? ` (${Math.round(app.matching_score)}% match)` : '';
+      lines.push(`- **${app.candidate_name || 'Candidate'}** for *${app.job_title || 'Role'}* — Status: ${app.status}${score}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 export function formatJobsList(jobs) {
+  if (jobs === null || jobs === undefined || jobs.error) {
+    return 'Could not retrieve your jobs from HirePool at this time. Please try again.';
+  }
   if (!Array.isArray(jobs) || jobs.length === 0) {
     return 'No jobs were found in HirePool for your account.';
   }
@@ -837,29 +1016,66 @@ export function formatCompanyProfile(profile) {
 }
 
 export function formatConsultancyProfile(profile) {
+  if (profile === null || profile === undefined || profile.error) {
+    return 'Could not retrieve your consultancy profile from HirePool at this time. Please try again.';
+  }
   const lines = ['## Consultancy Profile Details'];
   if (profile.consultancy_name) lines.push(`- **Consultancy Name:** ${profile.consultancy_name}`);
-  if (profile.consultancy_type) lines.push(`- **Type:** ${profile.consultancy_type}`);
-  if (profile.industry_specialization) lines.push(`- **Specialization:** ${profile.industry_specialization}`);
-  if (profile.headquarters_location) lines.push(`- **Headquarters:** ${profile.headquarters_location}`);
+  if (profile.consultancy_type) lines.push(`- **Consultancy Type:** ${profile.consultancy_type}`);
+  const specs = Array.isArray(profile.industry_specialization)
+    ? profile.industry_specialization.join(', ')
+    : profile.industry_specialization;
+  if (specs) lines.push(`- **Industry Specialization:** ${specs}`);
+  if (profile.company_size) lines.push(`- **Company Size:** ${profile.company_size}`);
+  if (profile.headquarters_location) lines.push(`- **Headquarters Location:** ${profile.headquarters_location}`);
+  if (profile.website) lines.push(`- **Website:** ${profile.website}`);
+  if (profile.founding_year) lines.push(`- **Founding Year:** ${profile.founding_year}`);
+  if (profile.candidate_pool_size !== undefined && profile.candidate_pool_size !== null) {
+    lines.push(`- **Candidate Pool Size:** ${profile.candidate_pool_size}`);
+  }
+  if (profile.verification_status) lines.push(`- **Verification Status:** ${profile.verification_status}`);
   if (profile.primary_contact?.full_name) {
     lines.push(`- **Primary Contact:** ${profile.primary_contact.full_name} (${profile.primary_contact.designation || 'Contact'})`);
   }
-  if (profile.description) lines.push('', profile.description.slice(0, 1000));
+  if (profile.about_company || profile.description) {
+    lines.push('', (profile.about_company || profile.description).slice(0, 1000));
+  }
   return lines.join('\n');
 }
 
 export function formatDashboardStats(stats) {
-  const lines = ['## Consultancy Dashboard Statistics'];
-  if (stats.total_candidates !== undefined) lines.push(`- **Total Candidates:** ${stats.total_candidates}`);
-  if (stats.active_jobs !== undefined) lines.push(`- **Active Jobs:** ${stats.active_jobs}`);
-  if (stats.pending_submissions !== undefined) lines.push(`- **Pending Submissions:** ${stats.pending_submissions}`);
-  if (stats.placements !== undefined) lines.push(`- **Placements:** ${stats.placements}`);
-  for (const [key, val] of Object.entries(stats)) {
-    if (!['total_candidates', 'active_jobs', 'pending_submissions', 'placements'].includes(key)) {
-      const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      lines.push(`- **${label}:** ${val}`);
-    }
+  if (stats === null || stats === undefined || stats.error) {
+    return 'Could not retrieve your consultancy dashboard statistics from HirePool at this time. Please try again.';
+  }
+  const lines = ['## Consultancy Dashboard Statistics\n'];
+  lines.push(`- **Total Candidates (Bench):** ${stats.total_candidates !== undefined ? stats.total_candidates : '0'}`);
+  lines.push(`- **Available Candidates:** ${stats.available_candidates !== undefined ? stats.available_candidates : '0'}`);
+  lines.push(`- **Active Submissions:** ${stats.active_submissions !== undefined ? stats.active_submissions : '0'}`);
+  lines.push(`- **Placements This Month:** ${stats.placements_this_month !== undefined ? stats.placements_this_month : '0'}`);
+  lines.push(`- **Successful Placements:** ${stats.successful_placements !== undefined ? stats.successful_placements : '0'}`);
+  lines.push(`- **Open Quotes:** ${stats.open_quotes !== undefined ? stats.open_quotes : '0'}`);
+  return lines.join('\n');
+}
+
+export function formatConsultancySubmissionsList(submissions) {
+  if (submissions === null || submissions === undefined || submissions.error) {
+    return 'Could not retrieve your candidate submissions from HirePool at this time. Please try again.';
+  }
+  if (!Array.isArray(submissions) || submissions.length === 0) {
+    return 'No candidate submissions were found in HirePool for your agency account.';
+  }
+  const lines = ['Here are your candidate submissions in HirePool:\n'];
+  for (const [index, sub] of submissions.slice(0, 20).entries()) {
+    const candName = sub.candidate_name || 'Candidate';
+    const jobTitle = sub.job_title || 'Role';
+    const status = sub.status || 'applied';
+    const score = sub.matching_score ? ` (Match: ${Math.round(sub.matching_score)}%)` : '';
+    const offer = sub.offer_status ? ` | Offer: ${sub.offer_status}` : '';
+    lines.push(`### ${index + 1}. ${candName} for ${jobTitle}`);
+    if (sub.company_name) lines.push(`- **Client:** ${sub.company_name}`);
+    lines.push(`- **Submission Status:** ${status}${score}${offer}`);
+    if (sub.created_at) lines.push(`- **Submitted At:** ${sub.created_at}`);
+    lines.push('');
   }
   return lines.join('\n');
 }
@@ -1403,24 +1619,56 @@ function resolveHirePoolVerifiedReadIntent(message, authUser, registry) {
       operationIdOrPredicate = 'get_my_user_profile_api_v1_clients_me_get';
     } else if (/^(?:please\s+)?(?:view|show|get|check|open)\s+(?:my\s+)?(?:company|client|employer)\s+profile(?:\s+details)?[.!?]*$/i.test(text) ||
         /^\s*(?:my\s+)?(?:company|employer)\s+profile\s*[.!?]*$/i.test(text) ||
+        /^\s*(?:my\s+)?profile\s*[.!?]*$/i.test(text) ||
         /^(?:please\s+)?(?:view|show|get)\s+my\s+profile(?:\s+details)?[.!?]*$/i.test(text)) {
       operationIdOrPredicate = 'get_my_company_profile_api_v1_clients_profile_get';
-    } else if (/^(?:please\s+)?(?:view|show|get|list|check)\s+(?:my\s+)?(?:company\s+|client\s+|posted\s+)?jobs?[.!?]*$/i.test(text)) {
-      operationIdOrPredicate = (opId, meta) =>
-        meta?.method === 'GET' && opId.includes('clients') && opId.includes('jobs') && !opId.includes('{');
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|list|check|display|see|fetch)\s+(?:my\s+|our\s+|all\s+)?(?:company\s+|client\s+|posted\s+)?jobs?[.!?]*$/i.test(text) ||
+      /^\s*(?:my|our|posted|active)\s+jobs?[.!?]*$/i.test(text) ||
+      /\b(?:what\s+jobs\s+(?:are\s+)?posted|jobs\s+posted\s+by\s+(?:me|us|company))\b/i.test(text)
+    ) {
+      operationIdOrPredicate = 'get_my_jobs_api_v1_jobs_my_jobs_get';
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|list|check|display|see|fetch|track)\s+(?:all\s+|the\s+)?(?:candidate\s+)?(?:applications?|applicants?)(?:\s+for\s+(?:my|our|posted)\s+jobs?)?[.!?]*$/i.test(text) ||
+      /^\s*(?:list\s+of\s+)?(?:applications?|applicants?)\s*[.!?]*$/i.test(text) ||
+      /\b(?:who\s+applied|candidates?\s+applied|job\s+applications?|review\s+applications?)\b/i.test(text)
+    ) {
+      operationIdOrPredicate = 'get_client_applications_api_v1_applications_for_client_get';
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|check|display|see)\s+(?:my\s+|our\s+|the\s+)?(?:client\s+|company\s+|employer\s+)?(?:dashboard\s+stats?|dashboard|statistics|overview|hiring\s+pipeline)[.!?]*$/i.test(text) ||
+      /^\s*(?:dashboard\s+stats?|dashboard|hiring\s+pipeline|pipeline\s+stats?)\s*[.!?]*$/i.test(text)
+    ) {
+      operationIdOrPredicate = 'get_dashboard_stats_api_v1_clients_dashboard_get';
     }
   } else if (authUser.role === 'consultancy') {
     if (/^(?:please\s+)?(?:view|show|get|check|open)\s+(?:my\s+)?(?:personal|user|account)\s+profile(?:\s+details)?[.!?]*$/i.test(text)) {
       operationIdOrPredicate = 'get_my_user_profile_api_v1_consultancies_me_get';
     } else if (/^(?:please\s+)?(?:view|show|get|check|open)\s+(?:my\s+)?(?:consultancy|agency)\s+profile(?:\s+details)?[.!?]*$/i.test(text) ||
         /^\s*(?:my\s+)?(?:consultancy|agency)\s+profile\s*[.!?]*$/i.test(text) ||
-        /^(?:please\s+)?(?:view|show|get)\s+my\s+profile(?:\s+details)?[.!?]*$/i.test(text)) {
+        /^\s*(?:my\s+)?profile\s*[.!?]*$/i.test(text) ||
+        /^(?:please\s+)?(?:view|show|get)\s+my\s+profile(?:\s+details)?[.!?]*$/i.test(text) ||
+        /\b(?:consultancy|agency)\s+(?:information|info|details)\b/i.test(text)) {
       operationIdOrPredicate = 'get_my_consultancy_profile_api_v1_consultancies_profile_get';
-    } else if (/^(?:please\s+)?(?:view|show|get|check)\s+(?:my\s+)?(?:consultancy\s+|agency\s+)?(?:dashboard\s+stats?|placement\s+stats?|statistics)[.!?]*$/i.test(text)) {
-      operationIdOrPredicate = 'get_dashboard_stats_api_v1_consultancies_dashboard_stats_get';
-    } else if (/^(?:please\s+)?(?:view|show|get|list|check)\s+(?:my\s+)?(?:bench\s+candidates?|candidate\s+pool|talent\s+pool)[.!?]*$/i.test(text)) {
-      operationIdOrPredicate = (opId, meta) =>
-        meta?.method === 'GET' && opId.includes('consultancies') && opId.includes('candidates') && !opId.includes('{');
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|check|display|see)\s+(?:my\s+|our\s+|the\s+)?(?:consultancy\s+|agency\s+)?(?:dashboard\s+stats?|dashboard|statistics|overview|recruitment\s+statistics|agency\s+performance)[.!?]*$/i.test(text) ||
+      /^\s*(?:agency\s+dashboard|consultancy\s+dashboard|dashboard\s+stats?|recruitment\s+statistics|agency\s+performance)\s*[.!?]*$/i.test(text) ||
+      /\b(?:how\s+many\s+candidates\s+(?:are\s+)?in\s+my\s+bench|how\s+many\s+candidates\s+have\s+i\s+submitted|agency\s+metrics)\b/i.test(text)
+    ) {
+      operationIdOrPredicate = 'get_dashboard_stats_api_v1_consultancies_dashboard_get';
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|list|check|display|see|fetch|track)\s+(?:all\s+|the\s+)?(?:my\s+|our\s+)?(?:candidate\s+)?(?:submissions?|submitted\s+candidates?|submission\s+history|submission\s+status|tracking)[.!?]*$/i.test(text) ||
+      /^\s*(?:candidate\s+submissions?|submitted\s+candidates?|my\s+submissions?|submission\s+history|submission\s+status)\s*[.!?]*$/i.test(text) ||
+      /\b(?:track\s+(?:my\s+|candidate\s+)?submissions?|show\s+submitted\s+candidates?|submission\s+progress|interview\s+progress)\b/i.test(text)
+    ) {
+      operationIdOrPredicate = 'get_consultancy_submissions_api_v1_applications_for_consultancy_get';
+    } else if (
+      /^(?:please\s+)?(?:view|show|get|list|check|display|see)\s+(?:all\s+|my\s+|our\s+)?(?:bench\s+candidates?|candidate\s+pool|talent\s+pool|bench|candidates\s+on\s+(?:my\s+|the\s+)?bench)[.!?]*$/i.test(text) ||
+      /^\s*(?:my\s+)?(?:bench\s+candidates?|candidate\s+pool|bench)\s*[.!?]*$/i.test(text) ||
+      /^\s*(?:give\s+(?:me\s+)?(?:the\s+)?)?(?:list\s+(?:of\s+)?)?(?:all\s+|my\s+|our\s+)?candidates?\s*[.!?]*$/i.test(text) ||
+      /^\s*my\s+candidates?\s*[.!?]*$/i.test(text) ||
+      /^(?:please\s+)?(?:show|view|get|list|check|display|see|fetch)\s+(?:all\s+|my\s+|our\s+)?candidates?\s*[.!?]*$/i.test(text)
+    ) {
+      operationIdOrPredicate = 'list_candidates_api_v1_consultancies_candidates_get';
     }
   }
 
@@ -1680,6 +1928,22 @@ async function evaluateHirePoolTurn({
     return { handled: true, text };
   }
 
+  if (
+    domainClassification.category === HIREPOOL_DOMAIN_CATEGORIES.HIREPOOL_IN_SCOPE &&
+    domainClassification.suggestedResponse &&
+    /^\s*(?:hi|hello|hey|greetings|good\s+(?:morning|afternoon|evening)|hi\s+hirepool|hello\s+hirepool)\b[.!?]*\s*$/i.test(message)
+  ) {
+    const text = domainClassification.suggestedResponse;
+    const scopeOptions = {
+      ...sessionOptions,
+      scope: 'HIREPOOL_IN_SCOPE',
+      domainCategory: HIREPOOL_DOMAIN_CATEGORIES.HIREPOOL_IN_SCOPE
+    };
+    sessionManager.addMessage(session.id, 'user', message, scopeOptions);
+    sessionManager.addMessage(session.id, 'assistant', text, scopeOptions);
+    return { handled: true, text };
+  }
+
   if (domainClassification.category === HIREPOOL_DOMAIN_CATEGORIES.AMBIGUOUS) {
     const text = domainClassification.suggestedResponse || HIREPOOL_AMBIGUOUS_CLARIFICATION_RESPONSE;
     const scopeOptions = {
@@ -1890,6 +2154,9 @@ const STATIC_TO_DYNAMIC_READ_MAP = Object.freeze({
   'applications:list': { candidate: HIREPOOL_APPLICATION_HISTORY_OPERATION },
   view_my_applications: { candidate: HIREPOOL_APPLICATION_HISTORY_OPERATION },
   my_applications: { candidate: HIREPOOL_APPLICATION_HISTORY_OPERATION },
+  'candidates:list': { consultancy: 'list_candidates_api_v1_consultancies_candidates_get' },
+  my_candidates: { consultancy: 'list_candidates_api_v1_consultancies_candidates_get' },
+  view_candidates: { consultancy: 'list_candidates_api_v1_consultancies_candidates_get' },
   'jobs:search': { all: HIREPOOL_SEARCH_JOBS_OPERATION },
   search_jobs: { all: HIREPOOL_SEARCH_JOBS_OPERATION },
   matching_jobs: { candidate: HIREPOOL_MATCHING_OPERATION },
@@ -2316,6 +2583,12 @@ async function processActionOrToolCalls({
               authUser?.assistantId === 'hirepool' &&
               isVerifiedHirePoolUser(authUser)
             ) {
+              if (authUser.credential) {
+                revokeHirePoolSessionBySdkCredential(authUser.credential);
+              }
+              if (authUser.id) {
+                sessionManager.destroyByUser(authUser.id, 'hirepool');
+              }
               hostAction = {
                 id: `hirepool-login-recovery-${conversationId}`,
                 action: 'hirepool_login',
@@ -2642,6 +2915,12 @@ async function processActionOrToolCalls({
           authUser?.assistantId === 'hirepool' &&
           isVerifiedHirePoolUser(authUser)
         ) {
+          if (authUser.credential) {
+            revokeHirePoolSessionBySdkCredential(authUser.credential);
+          }
+          if (authUser.id) {
+            sessionManager.destroyByUser(authUser.id, 'hirepool');
+          }
           hostAction = {
             id: `hirepool-login-recovery-${conversationId}`,
             action: 'hirepool_login',
@@ -2694,9 +2973,11 @@ async function processActionOrToolCalls({
           };
         }
       } catch (error) {
-        finalText = `I could not prepare this HirePool operation: ${
-          typeof error?.message === 'string' ? error.message.slice(0, 350) : 'the API verification failed.'
-        }`;
+        finalText = isReadTimeout(error)
+          ? 'HirePool took too long to verify application requirements (request timed out). Please try again; your conversation is preserved.'
+          : `I could not prepare this HirePool operation: ${
+              typeof error?.message === 'string' ? error.message.slice(0, 350) : 'the API verification failed.'
+            }`;
       }
     } else if (actionDef?.metadata?.connectorId && needsHostConfirmation(actionDef)) {
       hostAction = {
@@ -2778,10 +3059,33 @@ async function resolveHirePoolPreModelTurn({
 
   const readIntent = resolveHirePoolVerifiedReadIntent(message, authUser, activeRegistry);
   if (readIntent) {
+    if (session?.hirePoolProfileEdit?.active) {
+      session.hirePoolProfileEdit.active = false;
+      session.hirePoolProfileEdit.suspended = true;
+      session.hirePoolProfileEdit.updatedAt = new Date().toISOString();
+    }
     return { handled: false, followup: readIntent };
   }
 
   if (isVerifiedHirePoolUser(authUser)) {
+    if (
+      authUser.role === 'candidate' &&
+      /\b(?:my\s+off(?:er|re)s?|job\s+offers?|any\s+offers?|check\s+(?:my\s+)?off(?:er|re)s?|off(?:er|re)s?\s+received|view\s+off(?:er|re)s?|show\s+off(?:er|re)s?|do\s+i\s+have\s+(?:any\s+)?off(?:er|re)s?)\b/i.test(message)
+    ) {
+      if (session?.hirePoolProfileEdit?.active) {
+        session.hirePoolProfileEdit.active = false;
+        session.hirePoolProfileEdit.suspended = true;
+        session.hirePoolProfileEdit.updatedAt = new Date().toISOString();
+      }
+      const suspendedNotice = session?.hirePoolProfileEdit?.suspended
+        ? '\n\n*(Your profile edit is currently paused. Say **"Resume profile edit"** whenever you want to return to it.)*'
+        : '';
+      return {
+        handled: true,
+        text: `Viewing and managing formal job offers is not currently supported through the AI assistant. Please check the **HirePool Candidate Portal** directly at https://hirepool.ai to view, accept, or decline any job offers extended to you by employers.${suspendedNotice}`
+      };
+    }
+
     const readProfile = async (operationId = HIREPOOL_CANDIDATE_PROFILE_OPERATION) => {
       const targetReadAction = findDynamicActionByOperationId(activeRegistry, operationId);
       if (!targetReadAction) {
@@ -2831,6 +3135,178 @@ async function resolveHirePoolPreModelTurn({
         }
       };
     };
+
+    if (authUser.role === 'client') {
+      const isJobCreate = isHirePoolJobCreateIntent(message) || Boolean(session?.hirePoolJobCreate?.active);
+      if (isJobCreate) {
+        const stageJobConfirmation = async ({ body }) => {
+          const targetWriteAction = findDynamicActionByOperationId(activeRegistry, 'create_job_api_v1_jobs_post');
+          if (!targetWriteAction) {
+            throw new Error('Job creation operation (create_job_api_v1_jobs_post) is unavailable.');
+          }
+          const staged = await stageDynamicApiConfirmation(
+            targetWriteAction,
+            { body },
+            authUser,
+            {
+              readActions: activeRegistry.list(),
+              conversationId: session.id,
+              signal
+            }
+          );
+          if (!staged.ready) {
+            throw new Error(staged.reviewMessage || 'Validation failed for job creation.');
+          }
+          return {
+            reviewMessage: staged.reviewMessage,
+            hostAction: {
+              id: staged.confirmationToken,
+              action: targetWriteAction.name,
+              title: staged.formattedReview?.title || targetWriteAction.title || 'Create Job',
+              explanation: staged.reviewMessage,
+              parameters: staged.parameters,
+              formattedReview: staged.formattedReview || null,
+              risk: targetWriteAction.risk || 'write',
+              requiresConfirmation: true,
+              confirmationToken: staged.confirmationToken
+            }
+          };
+        };
+
+        const jobCreateResult = await handleHirePoolJobCreateTurn({
+          message,
+          session,
+          authUser,
+          stageJobConfirmation,
+          cancelConfirmation: confirmationToken => cancelDynamicApiConfirmation(confirmationToken, authUser)
+        });
+
+        if (jobCreateResult?.handled) {
+          return {
+            handled: true,
+            text: jobCreateResult.text,
+            action: jobCreateResult.hostAction || undefined
+          };
+        }
+      }
+    }
+
+    if (authUser.role === 'consultancy') {
+      const isCandidateAdd = isHirePoolAgencyCandidateAddIntent(message, session, authUser);
+      if (isCandidateAdd) {
+        const stageCandidateAddConfirmation = async ({ body }) => {
+          const targetWriteAction = findDynamicActionByOperationId(
+            activeRegistry,
+            'add_candidate_api_v1_consultancies_candidates_post'
+          );
+          if (!targetWriteAction) {
+            throw new Error('Candidate creation operation (add_candidate_api_v1_consultancies_candidates_post) is unavailable.');
+          }
+          const staged = await stageDynamicApiConfirmation(
+            targetWriteAction,
+            { body },
+            authUser,
+            {
+              readActions: activeRegistry.list(),
+              conversationId: session.id,
+              signal
+            }
+          );
+          if (!staged.ready) {
+            throw new Error(staged.reviewMessage || 'Validation failed for candidate creation.');
+          }
+          return {
+            reviewMessage: staged.reviewMessage,
+            hostAction: {
+              id: staged.confirmationToken,
+              action: targetWriteAction.name,
+              title: staged.formattedReview?.title || targetWriteAction.title || 'Add Candidate to Bench',
+              explanation: staged.reviewMessage,
+              parameters: staged.parameters,
+              formattedReview: staged.formattedReview || null,
+              risk: targetWriteAction.risk || 'write',
+              requiresConfirmation: true,
+              confirmationToken: staged.confirmationToken
+            }
+          };
+        };
+
+        const result = await handleHirePoolAgencyCandidateAddTurn({
+          message,
+          session,
+          registry: activeRegistry,
+          authUser,
+          stageCandidateAddConfirmation,
+          cancelConfirmation: confirmationToken => cancelDynamicApiConfirmation(confirmationToken, authUser)
+        });
+
+        if (result?.handled) {
+          return {
+            handled: true,
+            text: result.text,
+            action: result.hostAction || undefined
+          };
+        }
+      }
+
+      const isCandidateSubmit = isHirePoolAgencyCandidateSubmitIntent(message, session, authUser);
+      if (isCandidateSubmit) {
+        const stageCandidateSubmitConfirmation = async ({ body }) => {
+          const targetWriteAction = findDynamicActionByOperationId(
+            activeRegistry,
+            'create_consultancy_application_api_v1_applications_consultancy_post'
+          );
+          if (!targetWriteAction) {
+            throw new Error('Candidate submission operation (create_consultancy_application_api_v1_applications_consultancy_post) is unavailable.');
+          }
+          const staged = await stageDynamicApiConfirmation(
+            targetWriteAction,
+            { body },
+            authUser,
+            {
+              readActions: activeRegistry.list(),
+              conversationId: session.id,
+              signal
+            }
+          );
+          if (!staged.ready) {
+            throw new Error(staged.reviewMessage || 'Validation failed for candidate submission.');
+          }
+          return {
+            reviewMessage: staged.reviewMessage,
+            hostAction: {
+              id: staged.confirmationToken,
+              action: targetWriteAction.name,
+              title: staged.formattedReview?.title || targetWriteAction.title || 'Submit Candidate',
+              explanation: staged.reviewMessage,
+              parameters: staged.parameters,
+              formattedReview: staged.formattedReview || null,
+              risk: targetWriteAction.risk || 'write',
+              requiresConfirmation: true,
+              confirmationToken: staged.confirmationToken
+            }
+          };
+        };
+
+        const result = await handleHirePoolAgencyCandidateSubmitTurn({
+          message,
+          session,
+          registry: activeRegistry,
+          authUser,
+          executeAction: (action, args) => executeDynamicApiRead(action, args, authUser, { signal }),
+          stageCandidateSubmitConfirmation,
+          cancelConfirmation: confirmationToken => cancelDynamicApiConfirmation(confirmationToken, authUser)
+        });
+
+        if (result?.handled) {
+          return {
+            handled: true,
+            text: result.text,
+            action: result.hostAction || undefined
+          };
+        }
+      }
+    }
 
     const profileEdit = await handleHirePoolProfileEditTurn({
       message,

@@ -101,6 +101,16 @@ export class AssistantWidgetUI {
     // Attach event listeners
     this._attachEvents();
 
+    this._authMessageHandler = (event) => {
+      if (!event.data || typeof event.data !== 'object') return;
+      if (event.data.type === 'hirepool-auth:logout') {
+        void this._handleHirePoolLogout({ loggedOut: true }, 'You have been logged out of HirePool.');
+      }
+    };
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('message', this._authMessageHandler);
+    }
+
     document.body.appendChild(this.hostElement);
   }
 
@@ -108,6 +118,10 @@ export class AssistantWidgetUI {
    * Unmount widget and clean up DOM
    */
   unmount() {
+    if (this._authMessageHandler && typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+      window.removeEventListener('message', this._authMessageHandler);
+      this._authMessageHandler = null;
+    }
     this._stopVerificationWatcher();
     if (this.abortController) {
       this.abortController.abort();
@@ -348,6 +362,27 @@ export class AssistantWidgetUI {
       }
       const retryBtn = e.target.closest('.ai-error-retry-btn');
       if (retryBtn) {
+        if (typeof this._lastErrorRetryCallback === 'function') {
+          const callback = this._lastErrorRetryCallback;
+          this._lastErrorRetryCallback = null;
+          retryBtn.disabled = true;
+          retryBtn.textContent = 'Verifying...';
+          void (async () => {
+            try {
+              const banner = retryBtn.closest('.ai-error-banner');
+              if (banner && banner.parentNode) {
+                banner.parentNode.removeChild(banner);
+              }
+              await callback();
+            } catch (retryErr) {
+              this._renderErrorBanner(
+                retryErr?.message || 'Verification retry failed. Please try again.',
+                callback
+              );
+            }
+          })();
+          return;
+        }
         const lastUserMsg = [...this.messages].reverse().find(m => m.role === 'user');
         if (lastUserMsg) {
           this.sendMessage(lastUserMsg.content);
@@ -482,7 +517,15 @@ export class AssistantWidgetUI {
       this.storage.setUser(null);
     }
     this.storage.remove('hirepool_session');
+    this.storage.clear();
+    this.activeConversationId = null;
+    this.messages = [];
+    if (this.messagesList) {
+      this.messagesList.innerHTML = '';
+    }
     this.setHostIdentity(null, 'guest');
+    this.setGreeting(this._initialGreeting || '', this._initialSuggestedPrompts || []);
+    this._persistState();
   }
 
   async _handleHirePoolLogout(logoutInfo = {}, confirmationMessage = null) {
@@ -692,8 +735,17 @@ export class AssistantWidgetUI {
     }
     this.activeConversationId = null;
     this.messages = [];
-    this.messagesList.innerHTML = '';
+    if (this.messagesList) {
+      this.messagesList.innerHTML = '';
+    }
+    this._resetHirePoolIntegrationToGuest();
+    this.setHostIdentity(null, 'guest');
+    if (typeof this.storage.setUser === 'function') {
+      this.storage.setUser(null);
+    }
+    this.storage.remove('hirepool_session');
     this.storage.clear();
+    this.setGreeting(this._initialGreeting || '', this._initialSuggestedPrompts || []);
     this._persistState();
     this._setGenerating(false);
     this.events.emit('conversation:cleared');
@@ -981,7 +1033,7 @@ export class AssistantWidgetUI {
 
       let handled = false;
 
-      // Safety timeout if host does not respond within 15 seconds
+      // Safety timeout if host does not respond within 35 seconds
       timeoutId = setTimeout(() => {
         if (!handled && executing) {
           executing = false;
@@ -1790,7 +1842,8 @@ export class AssistantWidgetUI {
     }
   }
 
-  _renderErrorBanner(message) {
+  _renderErrorBanner(message, retryCallback = null) {
+    this._lastErrorRetryCallback = typeof retryCallback === 'function' ? retryCallback : null;
     const banner = document.createElement('div');
     banner.className = 'ai-error-banner';
     banner.innerHTML = `

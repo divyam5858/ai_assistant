@@ -754,6 +754,13 @@ export async function executeDynamicApiRead(actionDefinition, argumentsValue, us
   }
 }
 
+const specCache = new Map();
+const SPEC_CACHE_TTL_MS = 5 * 60 * 1000;
+
+export function clearDynamicApiSpecCache() {
+  specCache.clear();
+}
+
 async function authorizeIntegration(integration, user) {
   if (!integration.enabled || !user ||
       user.applicationId !== integration.applicationId ||
@@ -769,7 +776,7 @@ export async function createRequestActionRegistry(
   assistantId,
   user,
   baseRegistry,
-  { fetchSpec = requestText, signal } = {}
+  { fetchSpec = requestText, signal, cache = (fetchSpec === requestText) } = {}
 ) {
   if (!isDynamicApiDiscoveryEnabled()) return baseRegistry;
   const registry = new ActionRegistry({
@@ -803,16 +810,29 @@ export async function createRequestActionRegistry(
       throw new Error('Dynamic API specification credentials are unavailable');
     }
   }
-  const specificationText = await fetchSpec(specUrl, {
-    allowedHosts,
-    ...urlOptions,
-    headers: specHeaders,
-    timeoutMs,
-    maxBytes: maxSpecBytes,
-    allowYaml: true,
-    signal
-  });
-  const specification = parseOpenApiSpec(specificationText);
+
+  const cacheKey = `${integration.id}:${specUrl.href}`;
+  const now = Date.now();
+  const cached = specCache.get(cacheKey);
+  let specification;
+  if (cache && cached && (now - cached.timestamp < SPEC_CACHE_TTL_MS)) {
+    specification = cached.specification;
+  } else {
+    const specificationText = await fetchSpec(specUrl, {
+      allowedHosts,
+      ...urlOptions,
+      headers: specHeaders,
+      timeoutMs,
+      maxBytes: maxSpecBytes,
+      allowYaml: true,
+      signal
+    });
+    specification = parseOpenApiSpec(specificationText);
+    if (cache) {
+      specCache.set(cacheKey, { specification, timestamp: now });
+    }
+  }
+
   const roleOperationIds = getRoleOperationIds(integration, user);
   const roleIntegration = {
     ...integration,

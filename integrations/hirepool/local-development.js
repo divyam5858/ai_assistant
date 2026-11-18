@@ -68,7 +68,10 @@ const roleOperationIds = Object.freeze({
     'get_placements_api_v1_consultancies_placements_get',
     'get_placement_stats_api_v1_consultancies_placements_stats_get',
     'get_consultancy_submissions_api_v1_applications_for_consultancy_get',
-    'bulk_submit_consultancy_candidates_api_v1_applications_consultancy_submit_post'
+    'create_consultancy_application_api_v1_applications_consultancy_post',
+    'bulk_submit_consultancy_candidates_api_v1_applications_consultancy_submit_post',
+    'search_jobs_api_v1_jobs_search_get',
+    'get_job_api_v1_jobs__job_id__get'
   ])
 });
 
@@ -345,7 +348,17 @@ const responseFields = Object.freeze({
     'items.status',
     'items.company_name',
     'items.location',
-    'items.updated_at'
+    'items.locations',
+    'items.department',
+    'items.remote_type',
+    'items.job_type',
+    'items.employment_type',
+    'items.salary_min',
+    'items.salary_max',
+    'items.salary_currency',
+    'items.number_of_openings',
+    'items.updated_at',
+    'total'
   ],
   get_job_applications_api_v1_applications_job__job_id__get: [
     'items.id',
@@ -362,9 +375,16 @@ const responseFields = Object.freeze({
     'items.id',
     'items.job_id',
     'items.candidate_id',
+    'items.candidate_name',
+    'items.candidate_job_title',
+    'items.candidate_location',
+    'items.candidate_skills',
+    'items.matching_score',
     'items.status',
     'items.job_title',
     'items.company_name',
+    'items.source',
+    'items.consultancy_name',
     'items.created_at',
     'items.last_status_change_at',
     'total',
@@ -383,7 +403,10 @@ const responseFields = Object.freeze({
   add_candidate_api_v1_consultancies_candidates_post: [
     'id',
     'full_name',
+    'first_name',
+    'last_name',
     'email',
+    'job_title',
     'skills',
     'current_location',
     'status'
@@ -474,7 +497,10 @@ const responseFields = Object.freeze({
   list_candidates_api_v1_consultancies_candidates_get: [
     'items.id',
     'items.full_name',
+    'items.first_name',
+    'items.last_name',
     'items.email',
+    'items.job_title',
     'items.skills',
     'items.current_location',
     'items.availability',
@@ -513,6 +539,17 @@ const responseFields = Object.freeze({
     'submitted_count',
     'job_id',
     'candidate_ids'
+  ],
+  create_consultancy_application_api_v1_applications_consultancy_post: [
+    'id',
+    'job_id',
+    'consultancy_candidate_id',
+    'consultancy_id',
+    'status',
+    'matching_score',
+    'candidate_name',
+    'job_title',
+    'created_at'
   ],
   get_consultancy_submissions_api_v1_applications_for_consultancy_get: [
     'items.id',
@@ -845,6 +882,20 @@ async function prepareHirePoolAction({ actionDefinition, argumentsValue, user, o
         `- Reason: ${safeReviewText(body.reason) || 'No reason provided'}`,
         '',
         'Choose “Confirm & Execute” only if the target applications and new status are correct.'
+      ].join('\n')
+    };
+  }
+
+  if (operationId === 'create_consultancy_application_api_v1_applications_consultancy_post') {
+    const body = argumentsValue.body || {};
+    return {
+      reviewMessage: [
+        'I verified the candidate submission details before submitting to HirePool:',
+        `- Candidate ID: ${safeReviewText(body.consultancy_candidate_id) || 'Not provided'}`,
+        `- Job ID: ${safeReviewText(body.job_id) || 'Not provided'}`,
+        `- Cover Note: ${safeReviewText(body.consultancy_cover_note) || 'None provided'}`,
+        '',
+        'Review the selected candidate and job opening, then choose “Confirm & Execute” to submit the candidate.'
       ].join('\n')
     };
   }

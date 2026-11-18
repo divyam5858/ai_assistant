@@ -114,6 +114,15 @@ export function isHirePoolProfileEditRequest(message) {
     return false;
   }
 
+  // Never intercept job creation or consultancy candidate bench/submission commands
+  if (
+    /\b(?:bench\s+candidates?|talent\s+pool|add\s+(?:a\s+|this\s+)?candidate|register\s+(?:a\s+)?candidate|submit\s+(?:a\s+|this\s+)?candidate|submissions?)\b/i.test(text) ||
+    /^\s*(?:candidate\s+)?(?:name|first_name|full\s+name)\s*[:=\-–—]/i.test(text) ||
+    /^\s*(?:job\s+)?title\s*[:=\-–—]/i.test(text)
+  ) {
+    return false;
+  }
+
   const patterns = [
     /\b(?:edit|update|improve|complete|finish|modify|fill\s+out|fix|revise|change)\s+(?:my\s+|the\s+)?(?:candidate\s+|company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?profile\b/i,
     /\bi\s+(?:want|would\s+like|need)\s+to\s+(?:edit|update|improve|complete|finish|change|modify)\s+(?:my\s+|the\s+)?(?:candidate\s+|company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?profile\b/i,
@@ -156,7 +165,7 @@ export function extractProfileEditSections(message) {
     },
     {
       section: HIREPOOL_PROFILE_SECTIONS.WORK_EXPERIENCE,
-      regex: /\b(?:work\s*experience|employment(?:\s+details|\s+history)?|previous\s+(?:company|employer|job|role)|job\s+history|career\s+history|internship|\bexperience\b(?!\s+(?:level|years|months)))\b/i
+      regex: /\b(?:work\s*experience|employment(?:\s+details|\s+history)?|previous\s+(?:company|employer|job|role)|job\s+history|career\s+history|internship|\bexperience\b(?!\s*(?:level|years?|months?|to\s+\d+|as\s+\d+|is\s+\d+|[:=]\s*\d+|\d+\s*years?)))\b/i
     },
     {
       section: HIREPOOL_PROFILE_SECTIONS.CERTIFICATIONS,
@@ -180,7 +189,7 @@ export function extractProfileEditSections(message) {
     },
     {
       section: HIREPOOL_PROFILE_SECTIONS.BASIC_INFO,
-      regex: /\b(?:basic\s+(?:info|details)|first_?\s*name|last_?\s*name|phone(?:\s+number)?|current_?\s*location|location|job_?\s*title|headline|years?\s+of\s+experience|months?\s+of\s+experience|open\s+to\s+work|is_open_to_work)\b/i
+      regex: /\b(?:basic\s+(?:info|details)|first_?\s*name|last_?\s*name|phone(?:\s+number)?|current_?\s*location|location|job_?\s*title|headline|years?\s+of\s+experience|months?\s+of\s+experience|experience\s+(?:to|as|is|=|:)\s*\d+|open\s+to\s+work|is_open_to_work)\b/i
     }
   ];
 
@@ -260,7 +269,7 @@ function extractLabeledFields(text, labelAliases) {
     .sort((a, b) => b.length - a.length)
     .map(k => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   const pattern = new RegExp(
-    `(?:^|[\\n;,])\\s*(${escapedAliases.join('|')})\\s*:\\s*([^\\n;]+?)(?=(?:[\\n;,]\\s*(?:${escapedAliases.join('|')})\\s*:|$))`,
+    `(?:^|[\\n;,])\\s*(${escapedAliases.join('|')})(?:\\s*[:=]\\s*|\\s*[-–—]\\s+)([^\\n;]+?)(?=(?:[\\n;,]\\s*(?:${escapedAliases.join('|')})(?:\\s*[:=]|\\s*[-–—])|[\\n;]|$))`,
     'gi'
   );
   let match;
@@ -904,7 +913,7 @@ export function extractCandidateInlineFields(rawMessage, { pendingField = null }
     }
   }
   if (patch.expected_salary_min === undefined && patch.expected_salary_max === undefined) {
-    const rangeLpa = text.match(/\bexpected\s+salary\s+(?:range\s+)?(?:to|as|is|of|from|=|:)?\s*(\d+(?:\.\d+)?)\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*lpa\b(?:\s*(inr|usd|eur|gbp))?/i);
+    const rangeLpa = text.match(/\bexpected\s+salary\s+(?:range\s+)?(?:to|as|is|of|from|=|:)?\s*(\d+(?:\.\d+)?)\s*(?:lpa)?\s*(?:-|to)\s*(\d+(?:\.\d+)?)\s*lpa\b(?:\s*(inr|usd|eur|gbp))?/i);
     const rangeAbs = text.match(/\bexpected\s+salary\s+(?:range\s+)?(?:to|as|is|of|from|=|:)?\s*([\d,]+)\s*(?:-|to)\s*([\d,]+)\s*(inr|usd|eur|gbp)?\b/i);
     const minOnly = text.match(/\bexpected[_\s]+salary[_\s]+min\s+(?:to|as|is|=|:)?\s*([\d,]+)(?:\s*(lpa))?\b/i);
     const maxOnly = text.match(/\bexpected[_\s]+salary[_\s]+max\s+(?:to|as|is|=|:)?\s*([\d,]+)(?:\s*(lpa))?\b/i);
@@ -961,7 +970,7 @@ export function extractCandidateInlineFields(rawMessage, { pendingField = null }
     }
   }
   if (patch.is_open_to_work === undefined) {
-    const openMatch = text.match(/\b(?:is_open_to_work|open\s+to\s+work(?:\s+status)?)\s+(?:to|as|is|=|:)\s*(true|false|yes|no)\b/i);
+    const openMatch = text.match(/\b(?:is_open_to_work|open\s+to\s+work(?:\s+status)?)\s+(?:to|as|is|=|:)?\s*(true|false|yes|no)\b/i);
     if (openMatch) {
       patch.is_open_to_work = /^(?:true|yes)$/i.test(openMatch[1]);
     } else if (/\bnot\s+open\s+to\s+work\b/i.test(text)) {
@@ -1017,7 +1026,7 @@ function detectUnsupportedCandidateRequest(raw) {
   if (/\b(?:upload|update|change|edit|replace|remove)\s+(?:my\s+|the\s+)?(?:resume|cv)\b/i.test(text)) {
     return 'Resume uploads (`POST /api/v1/candidates/profile/resume`) require a file upload (`multipart/form-data`) directly on the HirePool dashboard and cannot be completed through text chat.';
   }
-  if (/\b(?:upload|update|change|edit|replace|remove)\s+(?:my\s+|the\s+)?(?:profile\s+picture|avatar|photo|logo)\b/i.test(text)) {
+  if (/\b(?:upload|update|change|edit|replace|remove)\s+(?:my\s+|the\s+)?(?:profile\s+)?(?:picture|photo|avatar|logo)\b/i.test(text)) {
     return 'Profile photo uploads (`POST /api/v1/candidates/profile/photo`) require a multipart image upload directly on HirePool and cannot be updated via text chat.';
   }
   if (/\b(?:company_name|company_size|gst_tax_id|gstin|registration_number|consultancy_name|consultancy_type|industry_specialization|verification_status|candidate_pool_size|company\s+profile|consultancy\s+profile)\b/i.test(text)) {
@@ -1995,6 +2004,7 @@ export async function handleCandidateProfileEditTurn({
   const currentState = ensureRoleScopedProfileEditState(session, authUser);
   const isProfileEditIntent = isHirePoolProfileEditRequest(text);
   const isActiveWorkflow = Boolean(currentState?.active && !['completed', 'cancelled'].includes(currentState.stage));
+  const isSuspendedWorkflow = Boolean(currentState?.suspended && !currentState?.active && !['completed', 'cancelled'].includes(currentState.stage));
 
   // Role boundary: non-candidates asking candidate-only profile edit operations
   if (authUser?.role !== 'candidate') {
@@ -2017,21 +2027,8 @@ export async function handleCandidateProfileEditTurn({
     return { handled: false };
   }
 
-  if (!isActiveWorkflow && !isProfileEditIntent) {
-    return { handled: false };
-  }
-
-  // Yield cleanly if user pivots to job search, matching, or job application commands
-  if (
-    isActiveWorkflow &&
-    !isProfileEditIntent &&
-    /\b(?:apply(?:\s+(?:for|to))?|matching\s+jobs?|job\s+applications?|my\s+applications?|search\s+(?:for\s+)?jobs?|find\s+jobs?|the\s+(?:first|second|third)\s+(?:job|one))\b/i.test(text)
-  ) {
-    return { handled: false };
-  }
-
-  // Allow explicit cancel inside active workflow (also cancels any pending confirmation token)
-  if (isActiveWorkflow && CANCEL_WORKFLOW_PATTERN.test(text)) {
+  // Priority 1: Allow explicit cancel inside active or suspended workflow
+  if ((isActiveWorkflow || isSuspendedWorkflow) && CANCEL_WORKFLOW_PATTERN.test(text)) {
     cancelStaleConfirmation(currentState, cancelConfirmation);
     session.hirePoolProfileEdit = {
       ...(currentState || {}),
@@ -2039,6 +2036,7 @@ export async function handleCandidateProfileEditTurn({
       role: 'candidate',
       profileType: HIREPOOL_PROFILE_TYPES.CANDIDATE,
       active: false,
+      suspended: false,
       stage: 'cancelled',
       selectedSection: null,
       pendingSections: [],
@@ -2056,6 +2054,78 @@ export async function handleCandidateProfileEditTurn({
       handled: true,
       text: 'Okay — I cancelled the profile edit workflow. No changes were saved to your HirePool profile.'
     };
+  }
+
+  // Priority 2: Clear new user intent (suspends active profile edit without losing collected fields)
+  const isIntentSwitch =
+    !isProfileEditIntent &&
+    (/\b(?:my\s+off(?:er|re)s?|job\s+offers?|any\s+offers?|check\s+(?:my\s+)?off(?:er|re)s?|off(?:er|re)s?\s+received|view\s+off(?:er|re)s?|show\s+off(?:er|re)s?|do\s+i\s+have\s+(?:any\s+)?off(?:er|re)s?)\b/i.test(text) ||
+     /\b(?:apply(?:\s+(?:for|to))?|matching\s+jobs?|job\s+applications?|my\s+applications?|search\s+(?:for\s+)?jobs?|find\s+jobs?|the\s+(?:first|second|third)\s+(?:job|one))\b/i.test(text) ||
+     /\b(?:(?:view|show|display|see|what(?:'s| is)\s+(?:on|in))\s+(?:my\s+)?profile|(?:my\s+)?dashboard|what\s+can\s+you\s+do|how\s+can\s+you\s+help|what\s+is\s+hirepool)\b/i.test(text) ||
+     /^\s*(?:hi|hello|hey|greetings|good\s+(?:morning|afternoon|evening))\b/i.test(text) ||
+     /\b(?:naukri|indeed|monster|glassdoor|foundit|shine)\b/i.test(text));
+
+  if (isActiveWorkflow && isIntentSwitch) {
+    session.hirePoolProfileEdit = {
+      ...(currentState || {}),
+      active: false,
+      suspended: true,
+      updatedAt: new Date().toISOString()
+    };
+    return { handled: false };
+  }
+
+  // Priority 3: Explicit continuation/resumption of suspended workflow
+  const isResumeIntent =
+    /^\s*(?:resume(?:\s+profile(?:\s*edit)?)?|continue(?:\s+(?:profile(?:\s*edit)?|adding\s+(?:work\s*)?experience|adding\s+education|editing))?|go\s+back\s+to\s+profile(?:\s*edit)?)\s*[.!?]*$/i.test(text);
+
+  if (isSuspendedWorkflow) {
+    if (!isResumeIntent && !isProfileEditIntent) {
+      return { handled: false };
+    }
+    // Reactivate suspended workflow
+    currentState.active = true;
+    currentState.suspended = false;
+    session.hirePoolProfileEdit = currentState;
+
+    if (isResumeIntent) {
+      const activeSec = currentState.selectedSection || HIREPOOL_PROFILE_SECTIONS.WORK_EXPERIENCE;
+      let resumeMsg = `Resuming your profile update for **${activeSec.replace(/_/g, ' ')}**.`;
+      if (activeSec === HIREPOOL_PROFILE_SECTIONS.WORK_EXPERIENCE) {
+        const expDraft = currentState.draftData?.work_experience || {};
+        const captured = [
+          expDraft.title ? `- **Job title:** ${expDraft.title}` : null,
+          expDraft.company ? `- **Company:** ${expDraft.company}` : null,
+          expDraft.location ? `- **Location:** ${expDraft.location}` : null,
+          expDraft.start_date ? `- **Start date:** ${expDraft.start_date}` : null,
+          expDraft.end_date ? `- **End date:** ${expDraft.end_date}` : null
+        ].filter(Boolean);
+        if (captured.length) {
+          resumeMsg += `\n\nI have captured so far:\n${captured.join('\n')}\n\nPlease provide any remaining details or reply "save" to confirm.`;
+        } else {
+          resumeMsg += '\nPlease provide the company name, job title, and dates for this role.';
+        }
+      } else if (activeSec === HIREPOOL_PROFILE_SECTIONS.EDUCATION) {
+        const eduDraft = currentState.draftData?.education || {};
+        const captured = [
+          eduDraft.degree ? `- **Degree:** ${eduDraft.degree}` : null,
+          eduDraft.institution ? `- **Institution:** ${eduDraft.institution}` : null,
+          eduDraft.field_of_study ? `- **Field of study:** ${eduDraft.field_of_study}` : null
+        ].filter(Boolean);
+        if (captured.length) {
+          resumeMsg += `\n\nI have captured so far:\n${captured.join('\n')}\n\nPlease provide any missing details to continue.`;
+        } else {
+          resumeMsg += '\nPlease provide your degree and institution.';
+        }
+      } else {
+        resumeMsg += '\nWhat details would you like to update?';
+      }
+      return { handled: true, text: resumeMsg };
+    }
+  }
+
+  if (!isActiveWorkflow && !currentState?.active && !isProfileEditIntent) {
+    return { handled: false };
   }
 
   // Reject unsupported CandidateProfileUpdate requests honestly without guessing or staging
@@ -2317,11 +2387,15 @@ export async function handleCandidateProfileEditTurn({
     HIREPOOL_PROFILE_SECTIONS.CERTIFICATIONS,
     HIREPOOL_PROFILE_SECTIONS.PROFESSIONAL_SUMMARY
   ].includes(state.selectedSection);
-  const targetsInlineSections = parsedSections.some(s => [
-    HIREPOOL_PROFILE_SECTIONS.BASIC_INFO,
-    HIREPOOL_PROFILE_SECTIONS.PREFERENCES,
-    HIREPOOL_PROFILE_SECTIONS.LINKS
-  ].includes(s));
+  const explicitInlineSwitch = /\b(?:basic\s+(?:info|details)|preferences?|social\s+links?|profile\s+links?|contact\s+info|my\s+phone|current\s+location)\b/i.test(text) ||
+    /^\s*(?:basic\s+(?:info|details)|preferences?|links?)\s*$/i.test(text);
+  const targetsInlineSections = explicitInlineSwitch || (
+    !structuredSectionActive && parsedSections.some(s => [
+      HIREPOOL_PROFILE_SECTIONS.BASIC_INFO,
+      HIREPOOL_PROFILE_SECTIONS.PREFERENCES,
+      HIREPOOL_PROFILE_SECTIONS.LINKS
+    ].includes(s))
+  );
 
   if (!structuredSectionActive || targetsInlineSections || !isActiveWorkflow) {
     const pendingField = state.draftData?.pendingField || null;
@@ -2386,42 +2460,52 @@ export async function handleCandidateProfileEditTurn({
     }
   }
 
-  if (parsedSections.length > 0 || directChoiceSection) {
-    const requestedSections = parsedSections.length > 0 ? parsedSections : [directChoiceSection];
-    // Preserve remaining queued sections if user selects/refines the first section without overwriting the queue
-    if (requestedSections.length > 1) {
-      state.pendingSections = requestedSections;
-    } else if (state.pendingSections.length > 1 && state.pendingSections.includes(requestedSections[0])) {
-      state.pendingSections = [
-        requestedSections[0],
-        ...state.pendingSections.filter(s => s !== requestedSections[0])
-      ];
-    } else if (state.pendingSections.length > 0 && state.pendingSections[0] !== requestedSections[0]) {
-      state.pendingSections = [
-        requestedSections[0],
-        ...state.pendingSections.filter(s => s !== requestedSections[0])
-      ];
-    } else if (state.pendingSections.length === 0) {
-      state.pendingSections = [requestedSections[0]];
-    }
+  const explicitSectionRequest = parsedSections.length > 0 && (
+    !structuredSectionActive ||
+    explicitInlineSwitch ||
+    parseCompoundSkillEdit(raw).matched ||
+    /\b(?:switch(?:\s+to)?|update|edit|add|change)\s+(?:education|work\s*experience|certifications?|professional\s+summary|skills?|technical\s+skills?|basic\s+(?:info|details)|preferences|links)\b/i.test(text) ||
+    /^\s*(?:education|work\s*experience|experience|certifications?|skills|summary|basic\s+(?:info|details)|preferences|links)\s*[.!?]*$/i.test(text)
+  );
 
-    if (state.selectedSection !== requestedSections[0]) {
-      state.selectedSection = requestedSections[0];
-      state.draftData = {};
-    }
-    if (parsedOp) state.operation = parsedOp;
+  if ((explicitSectionRequest || directChoiceSection) && (!structuredSectionActive || explicitInlineSwitch || explicitSectionRequest)) {
+    const requestedSections = explicitSectionRequest && parsedSections.length > 0 ? parsedSections : (directChoiceSection ? [directChoiceSection] : []);
+    if (requestedSections.length > 0) {
+      // Preserve remaining queued sections if user selects/refines the first section without overwriting the queue
+      if (requestedSections.length > 1) {
+        state.pendingSections = requestedSections;
+      } else if (state.pendingSections.length > 1 && state.pendingSections.includes(requestedSections[0])) {
+        state.pendingSections = [
+          requestedSections[0],
+          ...state.pendingSections.filter(s => s !== requestedSections[0])
+        ];
+      } else if (state.pendingSections.length > 0 && state.pendingSections[0] !== requestedSections[0]) {
+        state.pendingSections = [
+          requestedSections[0],
+          ...state.pendingSections.filter(s => s !== requestedSections[0])
+        ];
+      } else if (state.pendingSections.length === 0) {
+        state.pendingSections = [requestedSections[0]];
+      }
 
-    if (parsedSections.length > 1 && !/[:\n]/.test(raw) && !/\b(?:from|19\d{2}|20\d{2}|b\.?\s*(?:e|tech|sc|a|com)|m\.?\s*(?:e|tech|sc|ba|a))\b/i.test(text)) {
-      state.stage = 'collecting';
-      state.updatedAt = new Date().toISOString();
-      session.hirePoolProfileEdit = state;
-      return {
-        handled: true,
-        text: buildSectionPrompt(state.selectedSection, currentProfile, {
-          operation: state.operation,
-          pendingSections: state.pendingSections
-        })
-      };
+      if (state.selectedSection !== requestedSections[0]) {
+        state.selectedSection = requestedSections[0];
+        state.draftData = {};
+      }
+      if (parsedOp) state.operation = parsedOp;
+
+      if (parsedSections.length > 1 && !/[:\n]/.test(raw) && !/\b(?:from|19\d{2}|20\d{2}|b\.?\s*(?:e|tech|sc|a|com)|m\.?\s*(?:e|tech|sc|ba|a))\b/i.test(text)) {
+        state.stage = 'collecting';
+        state.updatedAt = new Date().toISOString();
+        session.hirePoolProfileEdit = state;
+        return {
+          handled: true,
+          text: buildSectionPrompt(state.selectedSection, currentProfile, {
+            operation: state.operation,
+            pendingSections: state.pendingSections
+          })
+        };
+      }
     }
   }
   if (parsedIdx !== null && isActiveWorkflow) {

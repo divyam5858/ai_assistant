@@ -98,11 +98,15 @@ export function storeHirePoolSession(
   return toPublicSession(context);
 }
 
-function toPublicSession(context) {
+function toPublicSession(context, now = Date.now()) {
+  const remainingMs = Math.max(0, (context.expiresAt || now) - now);
+  // Cap at 300000 ms (5 minutes) to satisfy HirePool host session handoff validation:
+  // LocalAssistantWidget.tsx & AuthContext.tsx strictly require 1000 <= expiresIn <= 300000.
+  const hostExpiresIn = Math.min(Math.max(remainingMs, 1000), 300000);
   return {
     credential: context.credential,
     sessionScope: context.sessionScope,
-    expiresIn: SESSION_TTL_MS,
+    expiresIn: hostExpiresIn,
     identity: {
       id: context.identity.id,
       email: context.identity.email,

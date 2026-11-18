@@ -46,6 +46,16 @@ export function errorHandler(err, req, res, next) {
     });
   }
 
+  // Dynamic API / Upstream service timeout
+  if (err.code === 'DYNAMIC_API_TIMEOUT' || err.code === 'HIREPOOL_API_TIMEOUT' || (statusCode === 504 && /dynamic\s*api|hirepool/i.test(err.message))) {
+    return res.status(504).json({
+      error: {
+        code: 'HIREPOOL_API_TIMEOUT',
+        message: 'HirePool took too long to respond. The operation timed out; please try again.'
+      }
+    });
+  }
+
   // Request timeout
   if (statusCode === 504 || err.code === 'ETIMEDOUT') {
     return res.status(504).json({
@@ -57,7 +67,7 @@ export function errorHandler(err, req, res, next) {
   }
 
   // Client abort / disconnect
-  if (statusCode === 499) {
+  if (statusCode === 499 || err.name === 'AbortError' || err.code === 'REQUEST_ABORTED') {
     return res.status(499).json({
       error: {
         code: 'CLIENT_CLOSED_REQUEST',

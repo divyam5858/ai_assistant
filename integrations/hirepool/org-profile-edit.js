@@ -49,10 +49,16 @@ const ORG_PROFILE_FIELD_LABELS = Object.freeze({
 });
 
 function detectTargetProfileScope(text, role, state) {
-  const explicitlyMe = /\b(?:my\s+(?:personal|own|user)\s+profile|personal\s+profile|my\s+account\s+details|my\s+designation|my\s+full\s+name|my\s+name\b(?!.*company|.*agency|.*consultancy)|my\s+phone(?:\s+number)?|\/me\b)\b/i.test(text);
   const explicitlyOrg = /\b(?:company|client|employer|organization|org|consultancy|agency|business)\s+(?:profile|details|info|name|size|industry|website|location|hq|headquarters|gst|gstin|registration|description|about|founding|social|specialization|type|commission)\b|\b(?:consultancy_type|industry_specialization|company_size|headquarters_location|company_website|about_company|founding_year|gst_tax_id|registration_number|social_media_links|gstin|commission\s+structure)\b/i.test(text);
+  const explicitlyMe = (
+    /\b(?:my\s+(?:personal|own|user)\s+profile|personal\s+profile|my\s+account\s+details|my\s+designation|designation\b|my\s+full\s+name|full\s+name\b|my\s+name\b(?!.*company|.*agency|.*consultancy)|(?:my\s+)?(?:personal\s+)?phone(?:\s+number)?|\/me\b)\b/i.test(text) ||
+    state?.draftData?.pendingField === 'phone' ||
+    state?.draftData?.pendingField === 'designation' ||
+    state?.draftData?.pendingField === 'full_name' ||
+    (/^\s*(?:\+?91[\s-]?)?[6-9]\d{9}\s*$/.test(text) && state?.draftData?.pendingField === 'phone')
+  ) && !explicitlyOrg;
 
-  if (explicitlyMe && !explicitlyOrg) {
+  if (explicitlyMe) {
     return role === 'client' ? HIREPOOL_PROFILE_TYPES.CLIENT_ME : HIREPOOL_PROFILE_TYPES.CONSULTANCY_ME;
   }
   if (explicitlyOrg) {
@@ -85,6 +91,10 @@ function detectOrgProfileUnsupportedRequest(raw, role, targetProfileType) {
 
   if (/\b(?:logo|profile\s+picture|avatar|photo)\b/i.test(text)) {
     return 'Company/agency logos and user photos require a multipart image upload (`POST .../logo` or `POST .../me/photo`) and cannot be updated via text chat. Please upload your image directly in the HirePool dashboard.';
+  }
+
+  if (/\b(?:work\s+email|login\s+email|account\s+email)\b/i.test(text) || (/\bemail\b/i.test(text) && /\b(?:update|change|edit|modify|set)\b/i.test(text))) {
+    return 'Your login/work email cannot be changed through profile edit chat. Email changes must be performed through HirePool account authentication settings.';
   }
 
   if (role === 'consultancy' && /\b(?:verification_status|candidate_pool_size|pool\s+size)\b/i.test(text)) {
@@ -189,19 +199,19 @@ function extractClientFields(raw, pendingField = null) {
   const patterns = [
     {
       field: 'company_name',
-      regex: /\bcompany\s+name\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:industry|company|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
+      regex: /\bcompany\s+name\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:(?:update|set|change|edit)\s+)?(?:industry|company|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
     },
     {
       field: 'industry',
-      regex: /\bindustry\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:company|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
+      regex: /\bindustry\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:(?:update|set|change|edit)\s+)?(?:company|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
     },
     {
       field: 'company_size',
-      regex: /\b(?:company\s+size|team\s+size|size)\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:industry|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
+      regex: /\b(?:company\s+size|team\s+size|size)\s*(?:to|as|is|:|=)\s*([^,;]+?)(?=\s*(?:,|;|$|\band\s+(?:(?:update|set|change|edit)\s+)?(?:industry|headquarters|location|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
     },
     {
       field: 'headquarters_location',
-      regex: /\b(?:headquarters(?:\s+location)?|hq(?:\s+location)?|location)\s*(?:to|as|is|in|:|=)\s*([^;]+?)(?=\s*(?:;|$|\band\s+(?:industry|company|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
+      regex: /\b(?:headquarters(?:\s+location)?|hq(?:\s+location)?|location)\s*(?:to|as|is|in|:|=)\s*([^;]+?)(?=\s*(?:;|$|\band\s+(?:(?:update|set|change|edit)\s+)?(?:industry|company|website|about|founding|gst|gstin|registration|linkedin|twitter|facebook|instagram)))/i
     },
     {
       field: 'company_website',
@@ -408,11 +418,25 @@ function extractOrgUserFields(raw, pendingField = null) {
   const desigMatch = text.match(/\b(?:my\s+)?designation\s*(?:to|as|is|:|=)\s*([^,;]+)/i);
   if (desigMatch?.[1]) body.designation = desigMatch[1].replace(/[.!?]+$/g, '').trim();
 
-  const phoneMatch = text.match(/\b(?:my\s+)?(?:personal\s+)?phone(?:\s+number)?\s*(?:to|as|is|:|=)\s*([^\s,;][^\n,;]*)/i);
-  if (phoneMatch?.[1]) body.phone = phoneMatch[1].replace(/[.!?]+$/g, '').trim();
+  const phoneMatch = text.match(/\b(?:(?:add|update|set|change|enter)\s+)?(?:my\s+)?(?:personal\s+)?phone(?:\s+number)?\s*(?:to|as|is|:|=|\s)\s*([+0-9\s-]{10,20})/i) ||
+    text.match(/\b(?:my\s+)?(?:personal\s+)?phone(?:\s+number)?\s*(?:to|as|is|:|=)\s*([^\s,;][^\n,;]*)/i);
+  if (phoneMatch?.[1]) {
+    body.phone = phoneMatch[1].replace(/[.!?]+$/g, '').trim();
+  } else if (pendingField === 'phone' || (Object.keys(body).length === 0 && /(?:phone|mobile|call)/i.test(raw))) {
+    const digitsMatch = raw.match(/(?:\+?91[\s-]?)?([6-9]\d{9})\b/) || raw.match(/\b\d{10}\b/);
+    if (digitsMatch) {
+      body.phone = digitsMatch[1] || digitsMatch[0];
+    }
+  }
 
   if (Object.keys(body).length === 0 && pendingField && !isOrgBareCommand(text)) {
-    body[pendingField] = raw.trim().replace(/[.!?]+$/, '').trim();
+    const trimmed = raw.trim().replace(/[.!?]+$/, '').trim();
+    if (pendingField === 'phone') {
+      const digitsMatch = trimmed.match(/(?:\+?91[\s-]?)?([6-9]\d{9})\b/) || trimmed.match(/\b\d{10}\b/);
+      body.phone = digitsMatch ? (digitsMatch[1] || digitsMatch[0]) : trimmed;
+    } else {
+      body[pendingField] = trimmed;
+    }
   }
 
   return body;
@@ -422,6 +446,47 @@ function isOrgBareCommand(text) {
   return /^(?:please\s+)?(?:update|edit|change|modify|set|view)\s+(?:my\s+|our\s+|the\s+)?(?:company|client|employer|consultancy|agency|personal|account)?\s*(?:profile|details|info|name|size|industry|website|location|headquarters|about|founding\s+year|gst|gstin|registration\s+number|social\s+links|type|specializations?|designation|phone(?:\s+number)?|full\s+name)\s*[.!?]*$/i.test(text);
 }
 
+export function isHirePoolOrgProfileEditRequest(message) {
+  const text = normalizeText(message);
+  if (!text) return false;
+
+  // Never intercept job creation, management, or application commands
+  if (/\b(?:post\s+(?:a\s+)?job|create\s+(?:a\s+)?job|add\s+(?:a\s+)?job|new\s+job|job\s+posting|openings?)\b/i.test(text)) return false;
+  if (/^\s*(?:job\s+)?title\s*[:=\-–—]/i.test(text) || /\bjob\s+title\s*[:=\-–—]/i.test(text)) return false;
+  if (/\b(?:view\s+(?:my\s+)?jobs?|show\s+(?:my\s+)?jobs?|my\s+jobs?|list\s+jobs?|posted\s+jobs?|company\s+jobs?)\b/i.test(text)) return false;
+  if (/\b(?:applications?|applicants?|candidates?\s+applied)\b/i.test(text)) return false;
+  if (/\b(?:dashboard|hiring\s+pipeline|pipeline\s+stats?|placement\s+stats?)\b/i.test(text)) return false;
+  if (/\b(?:bench\s+candidates?|talent\s+pool|add\s+(?:a\s+|this\s+)?candidate|register\s+(?:a\s+)?candidate|submit\s+(?:a\s+|this\s+)?candidate|submissions?)\b/i.test(text)) return false;
+  if (/^\s*(?:candidate\s+)?(?:name|first_name|full\s+name)\s*[:=\-–—]/i.test(text)) return false;
+
+  // Read-only profile view requests should NOT trigger edit flow (handled by verified read intent)
+  if (
+    /^(?:please\s+)?(?:view|show|get|display|open|see|what(?:'s| is)\s+(?:on|in))\s+(?:my\s+)?(?:company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?profile(?:\s+details|\s+info|\s+completion)?[.!?]*$/i.test(text) ||
+    /^\s*(?:my\s+)?(?:company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?profile\s*[.!?]*$/i.test(text)
+  ) {
+    return false;
+  }
+
+  // Profile edit requests
+  if (/\b(?:edit|update|improve|complete|finish|modify|fill\s+out|fix|revise|change)\s+(?:my\s+|the\s+|our\s+)?(?:company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?(?:profile|details|information|info)\b/i.test(text)) return true;
+  if (/\bi\s+(?:want|would\s+like|need)\s+to\s+(?:edit|update|improve|complete|finish|change|modify)\s+(?:my\s+|the\s+|our\s+)?(?:company\s+|client\s+|employer\s+|consultancy\s+|agency\s+|personal\s+|user\s+)?(?:profile|details|information|info)\b/i.test(text)) return true;
+
+  // Specific profile fields (personal or organization)
+  if (/\b(?:add|edit|update|change|modify|set|provide|upload)\s+(?:my\s+|our\s+|the\s+|company\s+|client\s+|employer\s+|consultancy\s+|agency\s+)?(?:company[_\s]name|consultancy[_\s]name|consultancy[_\s]type|industry|industry[_\s]specialization|specializations?|company[_\s]size|headquarters|headquarters[_\s]location|company[_\s]website|consultancy[_\s]website|website|about[_\s]company|about\s+us|founding[_\s]year|registration[_\s]number|gst[_\s]tax[_\s]id|gstin|social[_\s]media[_\s]links?|social\s+links?|commission[_\s]structure|full[_\s]name|designation|phone(?:\s+number)?|mobile(?:\s+number)?|logo|profile\s+picture|avatar|photo|work\s+email|login\s+email|email|verification\s+status|candidate\s+pool(?:\s+size)?|pool\s+size)\b/i.test(text)) return true;
+
+  if (/\b(?:add|append|include|replace|remove|delete|drop|set)\s+.{1,160}\s+(?:to|into|from|in)\s+(?:my\s+|our\s+|the\s+|company\s+|consultancy\s+|agency\s+)?(?:industry[_\s]specializations?|specializations?|social[_\s]media[_\s]links?|social\s+links?)\b/i.test(text)) return true;
+
+  if (/\b(?:remove|delete|drop)\s+.+?\s+(?:from|in)\s+(?:my\s+|our\s+|the\s+|company\s+|consultancy\s+|agency\s+)?(?:industry[_\s]specializations?|specializations?)\b/i.test(text)) return true;
+
+  // Labeled inputs (e.g. "phone: 9876543210", "designation: Senior Recruiter", "website: https://company.com")
+  if (/^(?:company[_\s]name|consultancy[_\s]name|industry|company[_\s]size|headquarters|website|about[_\s]company|founding[_\s]year|registration[_\s]number|gstin|gst[_\s]tax[_\s]id|designation|phone(?:\s+number)?|full[_\s]name)\s*[:=]\s*.+/i.test(text)) return true;
+
+  // Candidate-only fields (to trigger clean refusal message)
+  if (CANDIDATE_ONLY_FIELD_PATTERN.test(text)) return true;
+
+  return false;
+}
+
 function detectSingleRequestedOrgField(text, role, targetProfileType) {
   if (targetProfileType === HIREPOOL_PROFILE_TYPES.CLIENT_ME || targetProfileType === HIREPOOL_PROFILE_TYPES.CONSULTANCY_ME) {
     if (/\b(?:full\s+name|my\s+name)\b/i.test(text)) return 'full_name';
@@ -429,6 +494,11 @@ function detectSingleRequestedOrgField(text, role, targetProfileType) {
     if (/\bphone(?:\s+number)?\b/i.test(text)) return 'phone';
     return null;
   }
+  // Personal profile fields take precedence even if initially scoped to organization
+  if (/\bphone(?:\s+number)?\b/i.test(text)) return 'phone';
+  if (/\bdesignation\b/i.test(text)) return 'designation';
+  if (/\b(?:full\s+name|my\s+name)\b/i.test(text)) return 'full_name';
+
   if (role === 'client') {
     if (/\bcompany\s+name\b/i.test(text)) return 'company_name';
     if (/\bindustry\b/i.test(text)) return 'industry';
@@ -581,6 +651,11 @@ export async function handleOrgProfileEditTurn({
 
   const currentState = ensureRoleScopedProfileEditState(session, authUser);
   const isActiveWorkflow = Boolean(currentState?.active && !['completed', 'cancelled'].includes(currentState.stage));
+  const isProfileEditIntent = isHirePoolOrgProfileEditRequest(text);
+
+  if (!isActiveWorkflow && !isProfileEditIntent) {
+    return { handled: false };
+  }
 
   // Yield cleanly if user pivots to other role workflows
   if (isActiveWorkflow && PIVOT_PATTERN.test(text) && !/\b(?:profile|gstin|company\s+size|website|headquarters|designation|specializations?)\b/i.test(text)) {
@@ -697,6 +772,11 @@ export async function handleOrgProfileEditTurn({
   if (Object.keys(extracted).length === 0) {
     const requestedSingleField = detectSingleRequestedOrgField(text, role, targetProfileType);
     if (requestedSingleField) {
+      if (['phone', 'designation', 'full_name'].includes(requestedSingleField) &&
+          targetProfileType !== HIREPOOL_PROFILE_TYPES.CLIENT_ME &&
+          targetProfileType !== HIREPOOL_PROFILE_TYPES.CONSULTANCY_ME) {
+        state.profileType = role === 'client' ? HIREPOOL_PROFILE_TYPES.CLIENT_ME : HIREPOOL_PROFILE_TYPES.CONSULTANCY_ME;
+      }
       state.stage = 'collecting';
       state.draftData = { ...state.draftData, pendingField: requestedSingleField };
       state.updatedAt = new Date().toISOString();

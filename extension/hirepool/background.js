@@ -229,6 +229,18 @@ async function observeIdentityRequest(details) {
   }
 }
 
+async function broadcastLogout() {
+  const entries = await chrome.storage.session.get(null);
+  const activeKeys = [];
+  for (const [key, active] of Object.entries(entries)) {
+    if (key.startsWith(ACTIVE_PREFIX)) {
+      activeKeys.push(key);
+      await notifySite(active.siteTabId, { type: 'logout' });
+    }
+  }
+  if (activeKeys.length) await chrome.storage.session.remove(activeKeys);
+}
+
 function handleNavigation(details) {
   if (details.frameId !== 0) return;
   let url;
@@ -238,20 +250,19 @@ function handleNavigation(details) {
     return;
   }
 
+  const normalizedPath = url.pathname.replace(/\/+$/, '');
   if (
     url.origin === AUTH_ORIGIN &&
-    url.pathname.replace(/\/+$/, '') === '/login'
+    (normalizedPath === '/logout' || normalizedPath === '/login')
   ) {
-    void chrome.storage.session.get(null).then(async entries => {
-      const activeKeys = [];
-      for (const [key, active] of Object.entries(entries)) {
-        if (key.startsWith(ACTIVE_PREFIX)) {
-          activeKeys.push(key);
-          await notifySite(active.siteTabId, { type: 'logout' });
-        }
+    void (async () => {
+      const pending = await getPendingForAuthTab(details.tabId);
+      if (pending) {
+        // This tab was opened specifically for a pending login; do not treat as logout
+        return;
       }
-      if (activeKeys.length) await chrome.storage.session.remove(activeKeys);
-    });
+      await broadcastLogout();
+    })();
     return;
   }
 
@@ -289,6 +300,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
   details => {
+    let requestUrl;
+    try {
+      requestUrl = new URL(details.url);
+    } catch {
+      return;
+    }
+    if (requestUrl.pathname === '/api/v1/auth/logout') {
+      void broadcastLogout().catch(() => {});
+      return;
+    }
     void observeIdentityRequest(details).catch(() => {
       console.error('[HirePool Assistant] Could not process a verified identity request.');
     });
@@ -296,6 +317,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   {
     urls: [
       `${API_ORIGIN}/api/v1/auth/me`,
+      `${API_ORIGIN}/api/v1/auth/logout`,
       `${API_ORIGIN}/api/v1/candidates/profile`,
       `${API_ORIGIN}/api/v1/clients/profile`,
       `${API_ORIGIN}/api/v1/clients/me`,

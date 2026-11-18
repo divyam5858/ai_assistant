@@ -50,10 +50,10 @@ export function normalizeHirePoolVisitorRole(rawRole) {
   if (value === 'candidate' || value === 'job seeker' || value === 'jobseeker' || value === 'applicant') {
     return 'candidate';
   }
-  if (value === 'client' || value === 'company' || value === 'employer') {
+  if (value === 'client' || value === 'company' || value === 'employer' || value === 'company_recruiter' || value === 'corporate_recruiter') {
     return 'client';
   }
-  if (value === 'consultancy' || value === 'agency' || value === 'staffing' || value === 'recruiter') {
+  if (value === 'consultancy' || value === 'agency' || value === 'staffing' || value === 'agency_recruiter' || value === 'consultancy_recruiter') {
     return 'consultancy';
   }
   return VALID_ROLES.has(value) ? value : null;
@@ -142,8 +142,8 @@ export function extractHirePoolRegistrationRole(message) {
     return 'candidate';
   }
 
-  if (/\b(?:as\s+(?:a\s+)?(?:company|client|employer)|(?:company|client|employer)\s+(?:account|role|signup|sign\s*up|profile|onboarding)|join\s+as\s+(?:a\s+)?(?:company|client|employer))\b/i.test(text) ||
-      /^\s*(?:company|client|employer)\s*$/i.test(text)) {
+  if (/\b(?:as\s+(?:a\s+)?(?:company|client|employer)|(?:company|client|employer)\s+(?:account|role|signup|sign\s*up|profile|onboarding)|join\s+as\s+(?:a\s+)?(?:company|client|employer)|for\s+(?:my|our)\s+company|hiring\s+for\s+(?:my|our)\s+company|company\s+recruiter|corporate\s+recruiter|direct\s+hire)\b/i.test(text) ||
+      /^\s*(?:company|client|employer|for\s+(?:my|our)\s+company)\s*$/i.test(text)) {
     return 'client';
   }
 
@@ -228,7 +228,7 @@ export function isHirePoolAccountRequest(message) {
   ) {
     return false;
   }
-  return /\b(?:mine|my\s+(?:applications?|application status(?:es)?|profile|resume|assessments?|interviews?|account|jobs?)|(?:find|show|get|list|check|recommend)\s+(?:me\s+)?(?:my\s+)?matching\s+jobs?\b|\bmatching\s+jobs\s+for\s+(?:me|my\s+profile)\b|\bfind\s+jobs\s+matching\s+my\s+profile\b|i(?:\s+have|'ve)?\s+applied(?:\s+(?:for|to))?|applications?\s+(?:i|my)|application status(?:es)?|assessment status|interview status|candidate profile|profiles?\s+for me|resume for me|apply for (?:a|this|that|the) job|view\s+my\s+profile|show\s+my\s+profile|(?:edit|update|improve|complete|finish|modify)\s+(?:my\s+)?(?:candidate\s+)?profile|what\s+(?:information|info|details|fields?)\s+(?:is|are)\s+missing(?:\s+(?:on|in|from)\s+(?:my\s+)?profile)?|(?:add|edit|update|write|draft|help\s+me\s+write)\s+(?:a\s+|an\s+|the\s+|my\s+)?(?:professional\s+summary|career\s+summary|summary|education(?:al)?(?:\s+details)?|degree|graduation(?:\s+details)?|work\s*experience|employment(?:\s+details)?|previous\s+(?:company|employer|job))|(?:add|edit|update)\s+(?:b\.?\s*e\.?|b\.?\s*tech|m\.?\s*tech|b\.?\s*sc|m\.?\s*sc|bachelor(?:'s)?|master(?:'s)?|mba|phd|diploma))\b/i.test(
+  return /\b(?:mine|my\s+(?:off(?:er|re)s?|applications?|application status(?:es)?|profile|resume|assessments?|interviews?|account|jobs?)|(?:find|show|get|list|check|recommend)\s+(?:me\s+)?(?:my\s+)?matching\s+jobs?\b|\bmatching\s+jobs\s+for\s+(?:me|my\s+profile)\b|\bfind\s+jobs\s+matching\s+my\s+profile\b|i(?:\s+have|'ve)?\s+applied(?:\s+(?:for|to))?|applications?\s+(?:i|my)|application status(?:es)?|assessment status|interview status|candidate profile|profiles?\s+for me|resume for me|apply for (?:a|this|that|the) job|view\s+my\s+profile|show\s+my\s+profile|(?:edit|update|improve|complete|finish|modify)\s+(?:my\s+)?(?:candidate\s+)?profile|what\s+(?:information|info|details|fields?)\s+(?:is|are)\s+missing(?:\s+(?:on|in|from)\s+(?:my\s+)?profile)?|(?:add|edit|update|write|draft|help\s+me\s+write)\s+(?:a\s+|an\s+|the\s+|my\s+)?(?:professional\s+summary|career\s+summary|summary|education(?:al)?(?:\s+details)?|degree|graduation(?:\s+details)?|work\s*experience|employment(?:\s+details)?|previous\s+(?:company|employer|job))|(?:add|edit|update)\s+(?:b\.?\s*e\.?|b\.?\s*tech|m\.?\s*tech|b\.?\s*sc|m\.?\s*sc|bachelor(?:'s)?|master(?:'s)?|mba|phd|diploma))\b/i.test(
     text
   );
 }
@@ -350,6 +350,11 @@ export function getHirePoolVisitorSystemContext(session, options = {}) {
     'GUIDANCE:',
     '- Be helpful, concise, and conversational for guest visitors asking about HirePool capabilities, job discovery, pricing, privacy policy, terms of service, hiring workflows, or registration.',
     '- When a visitor asks general informational, pricing, privacy, or legal questions ("How does HirePool work?", "Do you support freshers?", "Can I search for remote jobs?", "Explain pricing", "Privacy policy", "Terms of Service"), answer in clear text using verified HirePool facts WITHOUT attaching signup or login action cards and WITHOUT refusing them as out of scope.',
+    '- Do NOT assume an unverified visitor role without user confirmation. If a visitor mentions having a list of candidates, clarify whether they are hiring as an Employer/Company or managing a talent pool as a Recruitment Consultancy/Staffing Agency, rather than arbitrarily assigning a role.',
+    '- When a visitor shares their career background (e.g. "I have 2 years of experience and I\'m actively looking"), recognize it as career/job exploration and explain how HirePool supports experienced candidates with AI job matching, work modes, and free registration.',
+    '- Answer greetings ("Hi", "Hello") with a friendly, concise welcome and helpful next steps.',
+    '- When asked to compare HirePool with external platforms (e.g. Naukri, LinkedIn), answer factually using verified HirePool capabilities without claiming external platform ratings or refusing the question.',
+    '- When a visitor expresses recruiting or hiring intent (e.g. "I\'m here for recruiting", "I need to hire", "I have a job requirement"), explain verified HirePool hiring workflows (job creation, AI candidate matching, applicant review, automated screening) without inventing commercial terms, free trials, or pricing. Clarify whether they are an Employer hiring for their company or a Recruitment Consultancy placing candidates for client companies.',
     '- Offer hirepool_signup ONLY when the visitor explicitly asks to create an account, sign up, register, join HirePool, or states they do not have an account yet (passing selected role if known).',
     '- NEVER emit raw Markdown ```action``` blocks in text or claim access to private account/application/profile data or invent live job listings while Server verification is not authenticated.'
   ];

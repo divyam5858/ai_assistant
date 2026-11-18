@@ -119,17 +119,10 @@
         conversationId: data.conversationId,
         message: data.pendingRequest
       });
-    } catch {
-      const failedCredential = authSession?.credential;
-      authSession = null;
-      if (failedCredential && !(await revokeCredential(failedCredential))) {
-        window.AssistantSDK?.displayNotice?.('The local assistant session could not be revoked; it will expire automatically.');
-      }
-      if (window.AssistantSDK?.initialized) {
-        window.AssistantSDK.clearConversationLocal();
-        await window.AssistantSDK.refreshSessionScope({ preserveConversation: false });
-      }
-      window.AssistantSDK?.displayNotice?.('HirePool login succeeded, but this request could not be resumed. Ask the assistant to try again.');
+    } catch (err) {
+      // Do not revoke valid credentials or clear the authenticated session on resume notification errors.
+      console.warn('[HirePool Assistant] Login verified, but pending request could not be resumed automatically:', err);
+      window.AssistantSDK?.displayNotice?.('HirePool login succeeded and your account is connected. Ask the assistant to continue.');
     }
   }
 
@@ -154,8 +147,15 @@
       window.AssistantSDK?.displayNotice?.('The local assistant session could not be revoked; it will expire automatically.');
     }
     if (window.AssistantSDK?.initialized) {
-      window.AssistantSDK.clearConversationLocal();
-      await window.AssistantSDK.refreshSessionScope({ preserveConversation: false });
+      if (typeof window.AssistantSDK.widgetUI?._handleHirePoolLogout === 'function') {
+        await window.AssistantSDK.widgetUI._handleHirePoolLogout(
+          { loggedOut: true, sdkSessionRevoked: true, backendRevoked: true },
+          'You have been logged out of HirePool.'
+        );
+      } else {
+        window.AssistantSDK.clearConversationLocal();
+        await window.AssistantSDK.refreshSessionScope({ preserveConversation: false });
+      }
     }
   }
 

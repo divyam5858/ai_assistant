@@ -359,10 +359,6 @@ class AssistantSDK {
     ) {
       throw new TypeError('A conversation ID and pending message are required');
     }
-    if (this.widgetUI.activeConversationId &&
-        this.widgetUI.activeConversationId !== conversationId) {
-      throw new Error('The login continuation does not match the active conversation');
-    }
     this.widgetUI.activeConversationId = conversationId;
     this.widgetUI._persistState();
     if (!this.widgetUI.isOpen) this.widgetUI.open();
@@ -413,7 +409,33 @@ class AssistantSDK {
       '"': '&quot;',
       "'": '&#39;'
     })[character]);
-    this.widgetUI._renderErrorBanner(safeMessage);
+
+    const isVerificationError = /could not verify|verification|session/i.test(message);
+    const retryCallback = isVerificationError
+      ? async () => {
+          let credential = null;
+          if (typeof this.integration?.getAuthHeaders === 'function') {
+            try {
+              const headers = await this.integration.getAuthHeaders();
+              const authHeader = headers?.Authorization || headers?.authorization || '';
+              credential = authHeader.replace(/^Bearer\s+/i, '').trim() || null;
+            } catch {}
+          }
+          if (!credential) {
+            credential = this.widgetUI?.storage?.get?.('hirepool_session')?.credential || null;
+          }
+          if (credential && this.apiClient) {
+            const result = await this.apiClient.validateHirePoolSession(credential);
+            if (result?.valid) {
+              await this.refreshSessionScope({ preserveConversation: true });
+              return;
+            }
+          }
+          throw new Error('HirePool login verification failed. Please try signing in again.');
+        }
+      : null;
+
+    this.widgetUI._renderErrorBanner(safeMessage, retryCallback);
   }
 
   displayHirePoolLoginNotice(message) {
